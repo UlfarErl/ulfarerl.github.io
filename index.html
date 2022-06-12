@@ -48,7 +48,7 @@ body{
     padding-right:0;
   }
   100% {
-    padding-right:25vw;
+    padding-right:1.95em;
   }
 }
 @keyframes growBig {
@@ -56,7 +56,7 @@ body{
     Font-size:15vw;
   }
   100% {
-    font-size:600vw;
+    font-size:300vw;
   }
 }
 @keyframes lessYellow {
@@ -84,7 +84,6 @@ body{
 <div class=container>
 <div class="year"><span id="yrtxt">1972</span></div>
 <div class="sum"><span id="fifty" hidden>50</span></div>
-<div class="sum"><span id="expr" hidden>50+50</span></div>
 <div class="gold"><span id="eq" hidden>=</span></div>
 <div class="gold"><span id="hundred" hidden>100</span></div>
 <div class="gold"><span id="hundred" hidden>100</span></div>
@@ -111,13 +110,12 @@ function sumyear() {
   setTimeout(doublesum, 1900);
 } 
 function doublesum() {
-  document.getElementById('fifty').setAttribute("hidden", "hidden");
-  document.getElementById('expr').removeAttribute("hidden");
-  document.getElementById('expr').style.cssText = "animation: fadeIn 0.3s;";
+  document.getElementById('fifty').innerHTML = "50+50";
+  document.getElementById('fifty').style.cssText = "";
   setTimeout(eqsign, 2000);
 } 
 function eqsign() {
-  document.getElementById('expr').setAttribute("hidden", "hidden");
+  document.getElementById('fifty').setAttribute("hidden", "hidden");
   document.getElementById('eq').removeAttribute("hidden");
   setTimeout(setgrowth, 500);
 }
