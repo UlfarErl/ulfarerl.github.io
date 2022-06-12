@@ -56,7 +56,7 @@ body{
     Font-size:15vw;
   }
   100% {
-    font-size:900vw;
+    font-size:600vw;
   }
 }
 @keyframes lessYellow {
@@ -64,7 +64,7 @@ body{
     color:#FFD700;
   }
   100% {
-    color:#332200;
+    color:#000000;
   }
 }
 .mid {
@@ -131,7 +131,7 @@ function grow() {
   setTimeout(done, 2950);
 }
 function done() {
-  document.getElementById('hundred').style.cssText = "font-size: 900vw; color: #332200;";
+  document.getElementById('hundred').setAttribute("hidden", "hidden");
   document.getElementById('bday').removeAttribute("hidden");
   document.getElementById('bday').style.cssText = "animation: fadeIn 1s;";
 }
