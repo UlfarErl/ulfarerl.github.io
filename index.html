@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=B612+Mono&family=Bad+Script&display=swap" rel="stylesheet">
+<style>
+.container {
+  color: white;
+  font-size: 15vw;
+  font-family:"B612 Mono",monospace;
+}
+.year {
+  color: white;
+}
+.sum {
+  color: #0096FF;
+}
+.gold {
+  color: #FFD700;
+}
+body{
+  height: 100vh;
+  display:flex;
+  background: black;
+  align-items: center;
+  justify-content: center
+}
+@keyframes fadeOut {
+  0% {
+    opacity:1;
+  }
+  100% {
+    opacity:0;
+  }
+}
+@keyframes fadeIn {
+  0% {
+    Opacity:0;
+  }
+  100% {
+    opacity:1;
+  }
+}
+@keyframes shiftLeft {
+  0% {
+    padding-right:0;
+  }
+  100% {
+    padding-right:25vw;
+  }
+}
+@keyframes growBig {
+  0% {
+    Font-size:15vw;
+  }
+  100% {
+    font-size:900vw;
+  }
+}
+@keyframes lessYellow {
+  0% {
+    color:#FFD700;
+  }
+  100% {
+    color:#332200;
+  }
+}
+.mid {
+  color: white;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 5vw;
+  font-family: "Bad Script", serif;
+  text-align: center;
+}
+</style>
+</head>
+
+<body>
+<div class=container>
+<div class="year"><span id="yrtxt">1972</span></div>
+<div class="sum"><span id="fifty" hidden>50</span></div>
+<div class="sum"><span id="expr" hidden>50+50</span></div>
+<div class="gold"><span id="eq" hidden>=</span></div>
+<div class="gold"><span id="hundred" hidden>100</span></div>
+<div class="gold"><span id="hundred" hidden>100</span></div>
+<div class="mid"><span id="bday" hidden>100 ára afmæli<br>Charlottu og Úlfars<br>23 júlí, 2022, kl. 14<br>Björtuloftum<br>Hörpunni</span></div>
+</div>
+</body>
+
+<script>
+function addyear() {
+  document.getElementById('yrtxt').innerHTML = (""+year);
+  year = year + 1; 
+  if(year <= endyear) { 
+    setTimeout(addyear, 100);
+  } else {
+    document.getElementById('yrtxt').style.cssText = "animation: fadeOut 3s;";
+    setTimeout(sumyear, 2900);
+  }
+} 
+function sumyear() {
+  document.getElementById('yrtxt').setAttribute("hidden", "hidden");
+  document.getElementById('fifty').style.cssText = "animation: fadeIn 0.3s;";
+  document.getElementById('fifty').removeAttribute("hidden");
+  document.getElementById('fifty').style.cssText = "animation: shiftLeft 2s;";
+  setTimeout(doublesum, 1900);
+} 
+function doublesum() {
+  document.getElementById('fifty').setAttribute("hidden", "hidden");
+  document.getElementById('expr').removeAttribute("hidden");
+  document.getElementById('expr').style.cssText = "animation: fadeIn 0.3s;";
+  setTimeout(eqsign, 2000);
+} 
+function eqsign() {
+  document.getElementById('expr').setAttribute("hidden", "hidden");
+  document.getElementById('eq').removeAttribute("hidden");
+  setTimeout(setgrowth, 500);
+}
+function setgrowth() {
+  document.getElementById('eq').setAttribute("hidden", "hidden");
+  document.getElementById('hundred').removeAttribute("hidden");
+  setTimeout(grow, 1000);
+}
+function grow() {
+  document.getElementById('hundred').style.cssText = "animation: growBig 3s, lessYellow 3s;";
+  setTimeout(done, 2950);
+}
+function done() {
+  document.getElementById('hundred').style.cssText = "font-size: 900vw; color: #332200;";
+  document.getElementById('bday').removeAttribute("hidden");
+  document.getElementById('bday').style.cssText = "animation: fadeIn 1s;";
+}
+year = 1972;
+endyear = 1976; 
+setTimeout(addyear, 1000);
+</script>
+
+</html>
