@@ -56,7 +56,15 @@ body{
     Font-size:15vw;
   }
   100% {
-    font-size:100vmin;
+    font-size:50vmin;
+  }
+}
+@keyframes growBigger {
+  0% {
+    Font-size:15vw;
+  }
+  100% {
+    font-size:200vmin;
   }
 }
 @keyframes lessYellow {
@@ -92,47 +100,63 @@ body{
 </body>
 
 <script>
-function addyear() {
-  document.getElementById('yrtxt').innerHTML = (""+year);
-  year = year + 1; 
-  if(year <= endyear) { 
-    setTimeout(addyear, 100);
-  } else {
-    document.getElementById('yrtxt').style.cssText = "animation: fadeOut 3s;";
-    setTimeout(sumyear, 2900);
+  mobile = 0;
+  if(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+      mobile = 1;
   }
-} 
-function sumyear() {
-  document.getElementById('yrtxt').setAttribute("hidden", "hidden");
-  document.getElementById('fifty').style.cssText = "animation: fadeIn 0.3s;";
-  document.getElementById('fifty').removeAttribute("hidden");
-  document.getElementById('fifty').style.cssText = "animation: shiftLeft 2s;";
-  setTimeout(doublesum, 1900);
-} 
-function doublesum() {
-  document.getElementById('fifty').innerHTML = "50+50";
-  document.getElementById('fifty').style.cssText = "";
-  setTimeout(eqsign, 2000);
-} 
-function eqsign() {
-  document.getElementById('fifty').setAttribute("hidden", "hidden");
-  //document.getElementById('eq').removeAttribute("hidden");
-  setTimeout(setgrowth, 500);
-}
-function setgrowth() {
-  //document.getElementById('eq').setAttribute("hidden", "hidden");
-  document.getElementById('hundred').removeAttribute("hidden");
-  setTimeout(grow, 2000);
-}
-function grow() {
-  document.getElementById('hundred').style.cssText = "animation: growBig 3s, lessYellow 3s;";
-  setTimeout(done, 2950);
-}
-function done() {
-  document.getElementById('hundred').setAttribute("hidden", "hidden");
-  document.getElementById('bday').removeAttribute("hidden");
-  document.getElementById('bday').style.cssText = "animation: fadeIn 1s;";
-}
+  function addyear() {
+      document.getElementById('yrtxt').innerHTML = (""+year);
+      year = year + 1; 
+      if(year <= endyear) { 
+	  setTimeout(addyear, 100);
+      } else {
+	  setTimeout(gapyear, 2000);
+      }
+  }
+  function gapyear() {
+      document.getElementById('yrtxt').style.cssText = "animation: fadeOut 1s;";
+      setTimeout(sumyear, 900);
+  }
+  function sumyear() {
+      document.getElementById('yrtxt').setAttribute("hidden", "hidden");
+      document.getElementById('fifty').style.cssText = "animation: fadeIn 0.3s;";
+      document.getElementById('fifty').removeAttribute("hidden");
+      setTimeout(drama, 1500);
+  }
+  function drama() {
+      document.getElementById('fifty').style.cssText = "animation: shiftLeft 2s;";
+      setTimeout(doublesum, 1900);
+  }
+  function doublesum() {
+      document.getElementById('fifty').innerHTML = "50+50";
+      document.getElementById('fifty').style.cssText = "";
+      setTimeout(eqsign, 2000);
+  } 
+  function eqsign() {
+      document.getElementById('fifty').setAttribute("hidden", "hidden");
+      setTimeout(setgrowth, 200);
+  }
+  function setgrowth() {
+      document.getElementById('hundred').removeAttribute("hidden");
+      setTimeout(grow, 2000);
+  }
+  function grow() {
+      if (mobile) {
+	  document.getElementById('hundred').style.cssText = "animation: growBig 3s, lessYellow 3s;";
+      } else {
+	  document.getElementById('hundred').style.cssText = "animation: growBigger 3s, lessYellow 3s;";
+      }
+      setTimeout(done, 2950);
+  }
+  function done() {
+      document.getElementById('hundred').setAttribute("hidden", "hidden");
+      if (mobile) {
+	  document.getElementById('bday').style.cssText = "font-size: 6vmin; animation: fadeIn 1s;";
+      } else {
+	  document.getElementById('bday').style.cssText = "animation: fadeIn 1s;";
+      }
+      document.getElementById('bday').removeAttribute("hidden");
+  }
 year = 1972;
 endyear = 2022; 
 setTimeout(addyear, 5000);
