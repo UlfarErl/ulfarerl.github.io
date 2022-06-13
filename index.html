@@ -110,7 +110,6 @@ a:active {
 <div class="sum"><span id="fifty" hidden>50</span></div>
 <div class="gold"><span id="eq" hidden>=</span></div>
 <div class="gold"><span id="hundred" hidden>100</span></div>
-<div class="gold"><span id="hundred" hidden>100</span></div>
 <div class="mid"><span id="bday" hidden>100 ára afmæli<br>Charlottu og Úlfars<br>23 júlí, 2022, kl. 14<br>Björtuloftum<br>Hörpunni<br>
     <br><a href="https://forms.gle/sFDp7ZMPjVECQkEN8">RSVP</a></span></div>
 </div>
@@ -125,7 +124,7 @@ a:active {
       document.getElementById('yrtxt').innerHTML = (""+year);
       year = year + 1; 
       if(year <= endyear) { 
-	  setTimeout(addyear, 100);
+	  setTimeout(addyear, 150);
       } else {
 	  setTimeout(gapyear, 2000);
       }
@@ -135,7 +134,7 @@ a:active {
       setTimeout(sumyear, 900);
   }
   function sumyear() {
-      document.getElementById('yrtxt').setAttribute("hidden", "hidden");
+      document.getElementById('yrtxt').remove();
       document.getElementById('fifty').style.cssText = "animation: fadeIn 0.3s;";
       document.getElementById('fifty').removeAttribute("hidden");
       setTimeout(drama, 1500);
@@ -150,10 +149,11 @@ a:active {
       setTimeout(eqsign, 2000);
   } 
   function eqsign() {
-      document.getElementById('fifty').setAttribute("hidden", "hidden");
-      setTimeout(setgrowth, 200);
+      document.getElementById('fifty').style.cssText = "animation: fadeOut 0.5s;";
+      setTimeout(setgrowth, 450);
   }
   function setgrowth() {
+      document.getElementById('fifty').remove();
       document.getElementById('hundred').removeAttribute("hidden");
       setTimeout(grow, 2000);
   }
@@ -163,16 +163,19 @@ a:active {
       } else {
 	  document.getElementById('hundred').style.cssText = "animation: growBigger 3s, lessYellow 3s;";
       }
-      setTimeout(done, 2950);
+      setTimeout(doneish, 1550);
   }
-  function done() {
-      document.getElementById('hundred').setAttribute("hidden", "hidden");
+  function doneish() {
       if (mobile) {
 	  document.getElementById('bday').style.cssText = "font-size: 6vmin; animation: fadeIn 1s;";
       } else {
 	  document.getElementById('bday').style.cssText = "animation: fadeIn 1s;";
       }
       document.getElementById('bday').removeAttribute("hidden");
+      setTimeout(done, 1400);
+  }
+  function done() {
+      document.getElementById('hundred').remove();
   }
 year = 1972;
 endyear = 2022; 
