@@ -6,7 +6,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=B612+Mono&family=EB+Garamond&display=swap" rel="stylesheet">
 
-<meta property="og:title" content="C + Ú = 100 ára" />
+<meta property="og:title" content="Charlotta og Úlfar eru 100 ára" />
 <meta property="og:image" content="party.png" />
 
 <style>
@@ -109,8 +109,11 @@ a:active {
 </head>
 
 <body>
+<audio id="music" preload="auto">
+  <source src="output.m4a" type="audio/aac">
+</audio>
 <div class=container>
-<div class="year"><span id="yrtxt">1972</span></div>
+<div class="year"><span onclick="smelltu();" style="cursor:zoom-in;" id="yrtxt">?</span></div>
 <div class="sum"><span id="fifty" hidden>50</span></div>
 <div class="gold"><span id="eq" hidden>=</span></div>
 <div class="gold"><span id="hundred" hidden>100</span></div>
@@ -121,8 +124,15 @@ a:active {
 
 <script>
   mobile = 0;
-  if(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+  if(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgentData.platform)) {
       mobile = 1;
+  }
+  function smelltu() {
+      year = 1972;
+      endyear = 2022; 
+      document.getElementById('yrtxt').style.cssText = "";
+      document.getElementById('yrtxt').innerHTML = "1972";
+      setTimeout(addyear, 2000);
   }
   function addyear() {
       document.getElementById('yrtxt').innerHTML = (""+year);
@@ -158,6 +168,7 @@ a:active {
   }
   function setgrowth() {
       document.getElementById('fifty').remove();
+      document.getElementById('music').play();
       document.getElementById('hundred').removeAttribute("hidden");
       setTimeout(grow, 2000);
   }
@@ -181,9 +192,6 @@ a:active {
   function done() {
       document.getElementById('hundred').remove();
   }
-year = 1972;
-endyear = 2022; 
-setTimeout(addyear, 2000);
 </script>
 
 </html>
