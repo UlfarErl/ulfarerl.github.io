@@ -113,7 +113,7 @@ a:active {
   <source src="output.m4a" type="audio/aac">
 </audio>
 <div class=container>
-<div class="year"><span onclick="smelltu();" style="cursor:zoom-in;" id="yrtxt">?</span></div>
+<div class="year"><span id="yrtxt">1972</span></div>
 <div class="sum"><span id="fifty" hidden>50</span></div>
 <div class="gold"><span id="eq" hidden>=</span></div>
 <div class="gold"><span id="hundred" hidden>100</span></div>
@@ -127,13 +127,10 @@ a:active {
   if(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgentData.platform)) {
       mobile = 1;
   }
-  function smelltu() {
-      year = 1972;
-      endyear = 2022; 
-      document.getElementById('yrtxt').style.cssText = "";
-      document.getElementById('yrtxt').innerHTML = "1972";
-      setTimeout(addyear, 2000);
-  }
+  year = 1972;
+  endyear = 2022; 
+  setTimeout(addyear, 2000);
+
   function addyear() {
       document.getElementById('yrtxt').innerHTML = (""+year);
       year = year + 1; 
