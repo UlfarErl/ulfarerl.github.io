@@ -1,0 +1,945 @@
+<!-- saved from url=(0105)https://web.archive.org/web/20160817092648/http://www.cs.cornell.edu/home/ulfar/cuba/paper/ -->
+<html>
+
+
+<title>High-Performance Binary Applets</title>
+</head>
+
+<body bgcolor="#ffffff" fgcolor="#000000">
+<h1 align="center">High-Performance Binary Applets</h1>
+<h3 align="center">
+<a href="https://ulfar.info/writeups/cuba/">
+<tt>http://www.cs.cornell.edu/home/ulfar/cuba/paper/</tt>
+</a>
+</h3>
+<h3 align="center">
+<a href="https://ulfar.info">Úlfar Erlingsson</a>
+</h3>
+<h3 align="center">
+May 1997
+</h3>
+
+
+<p><br>
+</p><blockquote>
+<a name="abstract">
+<h3 align="center">Abstract</h3></a>
+The proliferation of the World Wide Web (WWW) has made the idea of ``safe''
+downloadable applications, or applets, very attractive.  Applet computation,
+however, is usually inefficient, as it typically involves interpretation of the
+applet.  This paper shows how applets can, in many cases, get high performance
+by using <em>Cornell Untrusted Binary Applets</em> (CUBAs) for their performance-critical
+parts.  CUBAs are written in arbitrary machine code, and run directly on the
+CPU, thus achieving close to maximal performance, and are made safe through
+Operating System (OS) mechanisms of memory protection and system-call
+interception.  The paper describes an implementation of CUBAs on
+Solaris&nbsp;2.x, using Java and the Netscape&nbsp;3.0 WWW browser, and gives
+results showing an order-of-magnitude increase in performance through the
+use of CUBAs.
+</blockquote>
+<p><br>
+
+</p><hr>
+<ol>
+<li><a href="#sec-intro"><b>Introduction</b></a><br>
+</li><li><a href="#sec-prework"><b>Related Work</b></a><br>
+</li><li><a href="#sec-uba"><b>A Model of the CUBA Approach</b></a><br>
+</li><li><a href="#sec-impl"><b>Implementation</b></a><br>
+  <ol>
+  <li> <a href="#sec-janus">The Havana System-call Interceptor</a><br>
+  </li><li> <a href="#sec-java">The Java Interface Part</a><br>
+  </li><li> <a href="#sec-plugin">The Netscape CUBA-support Plugin</a><br>
+  </li></ol>
+</li><li><a href="#sec-perform"><b>Performance</b></a><br>
+  <ol>
+  <li> <a href="#sec-microbench">Microbenchmarks</a><br>
+  </li><li> <a href="#sec-casestudy">Case Studies</a><br>
+       <ol>
+         <li> <a href="#sec-md5">Message Digest Computation</a><br>
+         </li><li> <a href="#sec-mpeg">MPEG Video Decompression</a><br>
+       </li></ol>
+  </li></ol>
+</li><li><a href="#sec-concl"><b>Conclusions</b></a><br>
+</li><li><a href="#sec-refs"><b>References</b></a><br>
+</li></ol>
+<hr>
+
+
+<a name="sec-intro">
+<h2>1. Introduction</h2></a>
+
+The safe downloadable program, or applet, has recently become a subject of
+intense interest.  This is due to increased popularity of the World Wide Web,
+the current ubiquity of WWW browsers, and especially the Java
+programming language <a href="#cite-gosling96">[Gosling96]</a>.  Through
+applets, WWW servers can provide their users with more interactive and
+responsive services, while removing the need for server-side computation of
+all queries and thus reducing server load.  Applets have also been found to be
+important in other contexts, such as research OSs <a href="#cite-bershad95">[Bershad95]</a> <a href="#cite-engler95">[Engler95]</a>
+and extensible database systems <a href="#cite-wahbe93">[Wahbe93]</a>.
+Finally, efficient applet technology appears to be a crucial building block
+for emerging world-wide distributed systems <a href="#cite-grimshaw97">[Grimshaw97]</a> <a href="#cite-vahdat97">[Vahdat97]</a>.  <p> 
+
+Applets achieve safety by running in their own <em>logical fault domain</em>.
+A fault domain can be defined as a named region of memory, combined with the
+guarantee that code within it, when executed, can only interact with the rest
+of memory through a well defined interface, specified when the fault domain is
+created.  A fault domain thus provides both <em>memory-safety</em> and
+<em>interface-safety</em>, i.e., code executing within a fault domain can only
+access memory and interfaces provided at the time of its creation.  Many OSs
+provide fault domains in the form of hardware-protected address spaces, with
+the OS system-call entry points being a fixed interface for all address spaces.
+Another important safety property, sometimes tied to fault domains, is that of
+<em>resource-safety</em>, of not consuming too much of some resource, e.g., CPU
+time by going into an infinite loop <a href="#cite-seltzer96">[Seltzer96]</a>.
+</p><p>
+
+With the popularity of the Java applet mechanism for providing logical fault
+domains, the traditional method of using hardware- and OS-support has become
+largely ignored.  By using hardware-support and OS system-call interception,
+<em>any</em> code, including arbitrary machine code, can be made memory-,
+interface- and resource-safe.  The downside of using hardware-supported fault
+domains lies in the increased cross-fault-domain communication time.  For
+compute-bound applets, however, hardware is often the best approach as shown in
+<a href="#cite-goldberg96">[Goldberg96]</a>, and in two recent evaluations of
+applet technology, <a href="#cite-small96">[Small96]</a> and <a href="#cite-banerji96">[Banerji96]</a>.  </p><p>
+
+</p><blockquote>
+<center>
+<img src="overview.gif" width="336" height="200"><p>
+</p></center>
+<strong>Figure&nbsp;1:&nbsp;</strong>
+An overview of the approach:  Every applet comes in two parts, an interface
+part, which uses some language-based applet scheme such as Java, and an
+Cornell Untrusted Binary Applet (CUBA) part, which is run in a separate hardware fault
+domain.  The two applet parts communicate using messages, e.g., Inter-Process
+Communication (IPC), and shared memory.  The CUBA part is prevented from
+making most system calls by some system-call interception or filtering scheme.
+The OS ensures the resource-safety of the CUBA part, preempting the processor
+and limiting use of other resources such as memory.
+</blockquote>
+
+Cornell Untrusted Binary Applets (CUBAs) are a mechanism for providing high-performance
+applets, based on the above observations.  Figure&nbsp;1 shows an overview of
+the approach:  Each applet comes in two parts, one of which implements the
+interface to the system and the user, typically written in an interpreted
+language, and the other of which is the CUBA, a compute-server written in
+arbitrary machine code.   The two parts communicate with each other through 
+shared memory and some message facility.  The CUBA is made safe by running it in
+its own hardware-supported fault domain, with all system calls being
+intercepted and only allowing a handful, after inspecting their arguments. <p>
+
+By splitting the applet into an interface part and a CUBA part, the applet can
+achieve high performance while retaining the full flexibility of interface
+applet system.  This is a fortunate combination, since applet systems often
+have rich interfaces, e.g. to the screen and network, which at any rate are
+difficult to provide in a safe and efficient manner.  By assuming the existence
+of an interface part the CUBA mechanism can be made simpler and more
+secure. Many software systems are constructed in a way which allows them to be
+split up into an interface part, and a computation server.  Random examples of
+this are compilers, simulations, data compression tools, media renderers such
+as PostScript viewers, and 3-D games such as <em>Quake</em> <a href="#cite-abrash97">[Abrash97]</a>. </p><p>
+
+In addition to the performance advantages of CUBAs they have the advantage of
+being language-independent, i.e., they can be written in any language,
+including assembly code.  This allows applet writers to make use of any
+pre-existing code they may have access to.  This practical advantage is perhaps
+more persuading than any other argument for CUBAs, since most companies have
+large code bases, and people are extremely reluctant to rewrite existing code,
+as is required by applet mechanisms such as Java.  Language-independence,
+however, comes at the cost of losing interpreted code's platform independence.
+Even so, since 99% of computer users can be found on one or two platforms, this
+disadvantage may well be outweighed by CUBA's advantages. </p><p>
+
+The paper proceeds as follows: The next section discusses related work,
+including other applet mechanisms.  Section&nbsp;3 discusses the possible
+performance gains from using the CUBA approach in more detail, giving
+performance estimates based on a simple model.  Section&nbsp;4 describes an
+implementation of CUBAs on Solaris&nbsp;2.x, using Java as the interface applet
+mechanism, and the Netscape&nbsp;3.0 WWW browser as the system interface.
+Section&nbsp;5 gives performance results for the implementation, including
+microbenchmarks and applet case studies.  The paper concludes in
+Section&nbsp;6.
+
+
+<a name="sec-prework">
+</a></p><h2><a name="sec-prework">2. Related Work</a></h2>
+
+There is extensive literature on providing safe extensions, mostly in the
+context of operating systems.  Two surveys of the field can be found in
+<a href="#cite-small96">[Small96]</a> and
+<a href="#cite-banerji96">[Banerji96]</a>.
+Safety mechanisms can be categorized according to their level of
+abstraction from the underlying machine architecture: At the highest level
+safety can be achieved by running the applet through an interpreter, or an
+emulator, and making sure every instruction is safe before executing it.  A
+slightly lower-level approach is to write the applet in a type-safe language,
+thereby proving it safe through its types, and compiling it down to machine
+code before running it.  A generalization of this is to provide with the applet
+a proof of its safety that can be verified at load time.  The lowest-level
+language-based approach is to rewrite the applet machine code so that it
+becomes safe, in the worst case inserting run-time checks before every
+instruction.  Finally, the code can be guaranteed safe by hardware protection
+of memory accesses.  <p>
+
+Interpretation is a flexible scheme, allowing rich interfaces between applets,
+and is widely used, e.g., in Perl, Python, TCL, etc.  <a href="#cite-gray96">[Gray96]</a>, and, for the most part, in Java.  This
+flexibility comes, however, at the cost of running applets an order of
+magnitude, or more, slower than using other methods.  Interpretation can be
+combined with run-time code generation and compilation to improve performance.
+In Just-in-Time (JIT) compilation the browser compiles applet modules as they
+are used during the applet execution. JIT is the method currently most popular
+in the context of Java and the WWW.  In <a href="#cite-plezbert97">[Plezbert97]</a> the authors show that by using
+interpretation and heuristics for compilation time selection they can get total
+execution time within 5%-20% of optimal.  Continuous compilation, from <a href="#cite-kistler96">[Kistler96]</a> as well as <a href="#cite-plezbert97">[Plezbert97]</a>, compiles the applet in the
+background, while it is running.  By using profiling information or prediction
+heuristics code can then be selected for optimization and specialization at run
+time.  Unfortunately JIT and continuous compilation will often not improve the
+applet run time, at least on uniprocessors, since the total running time for
+the applet includes compilation and optimization, as well as its run time. </p><p>
+
+Type-safe languages, such as Java, ML <a href="#cite-milner90">[Milner90]</a>,
+and Modula-3 <a href="#cite-nelson91">[Nelson91]</a>, combine the speed of
+compiled code with strong safety properties <a href="#cite-bershad95">[Bershad95]</a> <a href="#cite-morrisett96">[Morrisett96]</a>.  Safety is achieved by restricting
+the language so that unsafe operations cannot be expressed, and so types can be
+inferred for all operations.  The safety properties enforced are stronger than
+those of other methods, e.g., guaranteeing correctness of data structures, as
+well as memory- and interface-safety.  There are, however, practical
+difficulties in the efficient implementation of type-safe languages, due to the
+enforcement of abstractions such as automatic memory management, which needs
+the expensive mechanism of garbage collection.  </p><p>
+
+Proof-Carrying Code <a href="#cite-necula97">[Necula97]</a> is a generalization
+of type-safe languages.  Here the code, be it source- or machine-level, carries
+with it a proof of safety.  This proof is usually hard to generate, but can be
+verified relatively easily.  This method is promising, but it seems doubtful
+that it can be scaled up to any but the most trivial of applets.  This is due
+to a number of unsolved problems, e.g., how to easily construct a proof for a
+large applet.</p><p>
+
+Software Fault Isolation <a href="#cite-wahbe93">[Wahbe93]</a> <a href="#cite-adl">[Adl-Tabadabai96]</a>, is a method which adds of run-time
+checks to the machine-code of applets, such that the applet, when run, cannot
+perform illegal operations.  Such augmented code can be validated very quickly,
+even as fast as linear in the code size.  Software Fault Isolation, especially
+its incarnation in Omniware <a href="#cite-adl">[Adl-Tabadabai96]</a>, is an
+attractive method for providing logical fault domains within an address space.
+It does however slow down the execution of the applet code by a significant
+amount, anywhere from 5% to 100% <a href="#cite-small97">[Small97]</a>.  </p><p>
+
+Hardware-based protection, used by the CUBA method, has the main disadvantage
+of potentially high run-time cost when applets communicate very frequently
+through messages.  In this case each message requires a context switch, which
+is a high-cost OS operation, except in some experimental OSs
+<a href="#cite-engler95">[Engler95]</a> <a href="#cite-liedtke">[Liedtke95]</a>.
+In many cases, however, it is the best method for achieving high-performance
+applets, as shown here. </p><p>
+
+
+<a name="sec-uba">
+</a></p><h2><a name="sec-uba">3. A Model of the CUBA Approach</a></h2>
+
+As described in the introduction, and shown in Figure&nbsp;1, the CUBA approach
+splits applets into two parts, the interface part and the CUBA part.  An CUBA is
+thus guaranteed safe, since it is not able to abuse memory, make malicious use
+of system interfaces, or hog the CPU.  In order to interact with the rest of
+the system, e.g., to present output or to receive input from the user, the CUBA
+will have to spend some of its time communicating with the interface, most
+probably by sending and receiving messages.  If the time it takes to send the
+CUBA a message asking it to compute something, and receiving the answer, is
+longer than computing the answer in the interface part, then the CUBA scheme 
+does not improve performance. <p>
+
+To evaluate the possible advantages of the CUBA approach it is helpful to
+examine a simple model:  Assume that an applet is constructed in such a way
+that it spends most of its time in the interface, but occasionally performs a
+non-trivial computation.  The applet can either perform this computation in the
+interface part, or in the CUBA part.  If the computation takes place in the
+interface it is likely to run slowly, but if it takes place in the CUBA there is
+a fixed communication time resulting from context-switching overhead in
+crossing fault domains.  </p><p>
+
+</p><center>
+<table><tbody><tr align="center">
+<td><img src="speedup10tms.gif" width="306" height="214"></td>
+<td><img src="speedup50pct.gif" width="306" height="215"></td>
+</tr><tr align="center"><td>(a)</td><td>(b)</td></tr></tbody></table>
+</center>
+<blockquote>
+<strong>Figure&nbsp;2:&nbsp;</strong> Time required to perform a single
+compute-bound call using interface code, and CUBA combined with interface code,
+assuming a 1 millisecond time for communication with the CUBA.
+The left-hand-side shows the required time if interface code runs 10 times
+slower than native code, i.e., the code running in the CUBA.  In this case it is
+faster to perform the call in the CUBA if the interface code for the call takes
+more than 111.11 microseconds.  The right-hand-side shows the situation if
+interface code runs 50% slower, in which case CUBAs get beneficial for calls
+taking more than 2 milliseconds.
+</blockquote>
+
+By assuming a constant communication time and a constant computation-speed
+advantage for CUBAs we can find the minimum computation time for which it is
+preferable to use CUBAs.  Figure&nbsp;2a shows that if communication time
+is 1ms and CUBA code has a tenfold speed advantage, then any computation taking
+longer than 111.11us is better done in the CUBA.  Figure&nbsp;2b shows that if
+the computation-speed advantage is 50% the break-even point is 2ms.  In the
+latter case, however, there is less to gain by using CUBAs, since best possible
+speedup is only 50%.  If this qualitative difference is ignored,
+however, all the break-even points for communication times of 1ms,
+while varying the speedup, can be plotted, as is done in Figure&nbsp;3. <p>
+
+</p><center>
+<table><tbody><tr align="center">
+<td><img src="breakeven1000.gif" width="307" height="215"></td>
+<td><img src="breakeven1000zoom.gif" width="307" height="215"></td>
+</tr><tr align="center"><td>(a)</td><td>(b)</td></tr></tbody></table>
+</center>
+<blockquote>
+<strong>Figure&nbsp;3:&nbsp;</strong>
+Break-even points (results of intersections as in Figure&nbsp;2) for a a single
+compute-bound call assuming a 1 millisecond time for communication with the
+CUBA.  The right-hand-side shows in more detail the situation when CUBA code is
+less then twice as fast as interface code.
+</blockquote>
+
+From Figure&nbsp;3 we can see that anything taking more than one millisecond is
+worth doing in an CUBA, if the CUBA computes twice as fast as the interface
+part.  Anything more than 100us, however, is worth doing in an CUBA if it is 10
+times faster than the interface.  Thus it is, e.g., probably worth computing a
+video frame from a compressed video format in the CUBA, since there are only
+a few tens of frames per second, and the interface part is probably more than
+twice as slow as the CUBA for this computation.   These numbers, however, assume
+that communication time is one millisecond, which is very conservative
+<a href="#cite-engler95">[Engler95]</a> <a href="#cite-liedtke">[Liedtke95]</a>
+<a href="#cite-small96">[Small96]</a>.  <p>  
+
+</p><center>
+<table><tbody><tr align="center">
+<td><img src="breakeven10.gif" width="307" height="215"></td>
+<td><img src="breakeven10zoom.gif" width="307" height="214"></td>
+</tr><tr align="center"><td>(a)</td><td>(b)</td></tr></tbody></table>
+</center>
+<blockquote>
+<strong>Figure&nbsp;4:&nbsp;</strong>
+Break-even points for a a single
+compute-bound call assuming a 10 microsecond time for communication with the
+CUBA.  The right-hand-side shows in more detail the situation when CUBA code is
+less then twice as fast as interface code.  Note that the graphs are the same
+as those in Figure&nbsp;3, apart from the curves being two orders of magnitude
+lower.
+</blockquote>
+
+Using contemporary CPUs and OSs it is not an impossible goal to have
+communication times of only 10 microseconds.  This should, however, be taken as
+a lower bound on the communication time.  Figure&nbsp;4 shows the resulting
+break-even time graphs.  As can be seen, almost all substantial
+computation is worth performing in the CUBA, even when the interface part is
+using a high-performance applet mechanism, such as Software Fault Isolation
+or compiled type-safe languages.  <p>
+
+
+<a name="sec-impl">
+</a></p><h2><a name="sec-impl">4. Implementation</a></h2>
+
+Implementation of CUBAs in any system which supports system-call interception,
+interposition or filtering is an easy task.  If there are no such OS
+facilities, however, it becomes near impossible.  In that case the CUBA would
+have to be scanned for system-call opcode sequences and they validated.  Such
+binary validation is often infeasible, as discussed in <a href="#cite-wahbe93">[Wahbe93]</a>.  Assuming OS support for CUBAs, however,
+the a high-performance CUBA implementation could be as in Figure&nbsp;5.<p>
+
+</p><blockquote>
+<center>
+<img src="optimal.gif" width="336" height="171"><p>
+</p></center>
+<strong>Figure&nbsp;5:&nbsp;</strong>
+A near-optimal implementation of CUBAs, assuming OS support: The CUBA
+filter mechanism resides inside the kernel, with filter policy being decided at
+CUBA creation time, thus allowing almost unhindered system calls.  Messages
+between applet parts are sent using a fast Local Procedure Call (LPC or LRPC)
+mechanism, with only individual threads being blocked on send/receive.
+</blockquote>
+
+The policy for whether or not to allow a CUBA system call is usually a simple
+one.  An OS designed to support CUBAs could implement most of this policy using
+a simple set of allowed system calls, with the rest of the policy only needing
+a few simple checks at each call.  The policy is therefore best placed inside
+the kernel, as in Figure&nbsp;5, to save on context switch time.  In this case
+the only overhead from using CUBAs would lie in sending messages between the
+fault domains.  As mentioned before, this overhead is becoming very small,
+especially when the OS uses specialized communication mechanisms, such as
+LPC. <p> 
+
+The prototype implementation for this paper is based on Solaris&nbsp;2.x, Java,
+and to a degree the Netscape&nbsp;3.0 WWW browser.  The CUBA and Java parts of
+an applet are run in separate processes, which provide the fault domains.  The
+system-call interception mechanism runs as a separate process.
+Messages between the applet parts are sent using the System&nbsp;V IPC facility
+of Solaris&nbsp;2.x, and System&nbsp;V shared memory is used.  One
+difficulty stemming from the IPC mechanism is that blocked send/receive blocks
+the entire process, not just the calling thread.  To solve this the interface
+part has to poll the message queue, significantly hurting performance. </p><p>
+
+
+<a name="sec-janus">
+</a></p><h2><a name="sec-janus">4.1. The Havana System-call Interceptor</a></h2>
+
+The filtering of system calls is handled by Havana system-call interceptor,
+which is based on that of the Janus system <a href="#cite-goldberg96">[Goldberg96]</a>, and also handles forking the CUBA.
+Before starting the CUBA the Havana process closes all file descriptors, leaving
+only <tt>stdout/stderr</tt> which it redirects to <tt>/dev/null</tt>.  Havana
+also makes the CUBA <tt>nice</tt>, and uses the <tt>setrlimits</tt> mechanism
+to set ceilings on its memory and CPU consumption, and disallowing any disk
+use, other than for virtual memory, effectively providing resource-safety. <p>
+
+</p><blockquote>
+<center>
+<img src="ipcpath.gif" width="336" height="170"><p>
+</p></center>
+<strong>Figure&nbsp;6:&nbsp;</strong>
+An IPC message being sent from the CUBA to its interface, in the current
+implementation.  The <tt>sndmsg</tt> system call is forwarded by the Solaris
+kernel to the Havana process which allows it, and then returns to the kernel
+which then finally sends it to the interface.  Note that this requires
+scheduling three processes onto the CPU.
+</blockquote>
+
+<table align="left" cellpadding="3" cellspacing="2">
+<tbody><tr><td align="center"><table border="2">
+<tbody><tr><td><tt>SYS_brk</tt></td><td>Allocates memory.</td></tr>
+<tr><td><tt>SYS_mincore</tt></td><td>Determine memory page residency.</td></tr>
+<tr><td><tt>SYS_mmap</tt></td><td>Map memory pages.</td></tr>
+<tr><td><tt>SYS_munmap</tt></td><td>Unmap memory pages.</td></tr>
+<tr><td><tt>SYS_mprotect</tt></td><td>Set protection of memory mapping.</td></tr>
+<tr><td><tt>SYS_memcntl</tt></td><td>Control address space.</td></tr>
+<tr><td><tt>SYS_exit</tt></td><td>Terminate process.</td></tr>
+<tr><td><tt>SYS_wait</tt></td><td>Wait for signal.</td></tr>
+<tr><td><tt>SYS_waitsys</tt></td><td>Wait for signal.</td></tr>
+<tr><td><tt>SYS_fstat</tt></td><td>Query open file descriptor.</td></tr>
+<tr><td><tt>SYS_nice</tt></td><td>Lower process' priority.</td></tr>
+<tr><td><tt>SYS_getrlimit</tt></td><td>Get system resource limits.</td></tr>
+<tr><td><tt>SYS_getpid</tt></td><td>Get ID number of process.</td></tr>
+<tr><td><tt>SYS_msgsys</tt></td><td>Use System&nbsp;V IPC messages.</td></tr>
+<tr><td><tt>SYS_shmsys</tt></td><td>Use System&nbsp;V shared memory.</td></tr>
+</tbody></table></td><td>&nbsp;</td></tr><tr><td>
+<strong>Table&nbsp;1:&nbsp;</strong>
+System calls allowed for CUBA processes.
+</td><td></td></tr>
+</tbody></table>
+
+As can be seen in Figure&nbsp;6 there is significant overhead involved in using
+a separate process to filter system calls.  A facility for CUBA support, or at
+least system-call interception, within the OS kernel would naturally simplify
+and speed up the CUBA implementation.  Many OSs, however, do not even support
+system-call interception at all, this holds true, e.g., for Windows&nbsp;NT.  The
+only common method of achieving this is through the UNIX System&nbsp;V
+Release&nbsp;4 <tt>/proc</tt> pseudo-file-system mechanism, supported, e.g., in
+Linux, Sun Solaris&nbsp;2.x and SGI Irix&nbsp;5. <p>
+
+Using the <tt>/proc/PID</tt> pseudo-file a process can declare itself
+interested in several types of events for process no. PID, including system
+calls.  The monitoring process then waits blocked in an <tt>ioctl</tt> call 
+until an interesting event happens in the monitored process.  For system-call
+interception the monitor blocks until an <tt>PIOCSENTRY</tt> event happens, at
+which time all threads in the monitored process stop, and control is
+transferred to the monitor.  To abort the system call the monitor performs a 
+<tt>PIOCRUN</tt> request with the <tt>PRSABORT</tt> flag set, at which time the
+monitored process resumes with an <tt>EINTR</tt> system-call failure. </p><p>
+
+Table&nbsp;1 lists all system calls which an CUBA can successfully make.  Most
+of these are there because they are used in the C library startup code, e.g.,
+for memory management.  The three last ones, however, are needed for CUBA
+support, <tt>getpid</tt> and <tt>msgsys</tt> for IPC messaging, and
+<tt>shmsys</tt> for shared memory.  Only the last two system calls, those for
+IPC and shared memory, are actually intercepted, the others are allowed with
+any arguments.  The last two, however, are filtered: <tt>msgsys</tt> so it only
+allows <tt>msgget</tt>, <tt>msgsnd</tt> &amp; <tt>msgrcv</tt> to/from the interface
+process, and <tt>msgctl</tt> only to check queue availability;
+<tt>shmsys</tt> so it allows <tt>shmget</tt> and <tt>shmdt</tt>,
+and <tt>shmat</tt> on an interface-part created shared memory region. </p><p>
+
+The Havana process handles one additional tasks in this implementation, that
+freeing up resources.  This is necessary, because the interface process may
+crash (as is common in the case of Netscape), and the CUBA process must be
+killed at that time, to avoid resource consumption by defunct CUBAs.  The Havana
+process therefore checks periodically whether the interface is still running,
+by handling a repeating alarm signal.  Additionally the Havana process deletes
+the IPC channel between the applet parts at termination.  This is necessary
+since in the Solaris&nbsp;2.x OS these channels are a limited resource which is
+not maintained automatically, i.e., a user id can own a message channel even if
+there is no process running on its behalf. </p><p>
+
+
+<a name="sec-java">
+</a></p><h2><a name="sec-java">4.2. The Java CUBA Interface</a></h2>
+
+In order to correctly measure the performance of the CUBA approach when using
+Java in the interface part, the version in Figure&nbsp;7 was implemented using
+the Sun JDK.  In it each IPC call is allowed to block, in order to improve
+performance.  A Java interface part can have many CUBA parts, each of which is
+represented by a <tt>UntrustedBinaryAPI</tt> class instance.  If a CUBA part
+dies, its corresponding object instance throws an exception the next time one
+of its methods is called.  In the current implementation every argument to be
+sent in a message or in shared memory is copied into or out of a Java array.
+For performance, as well as convenience, it would be better if Java supported
+shared memory in some manner, as then a copy could be saved.  It would also be
+very good, performance wise, if Java allowed more direct access to the display
+hardware, like the WinG (or DirectX) extensions to Windows. <p>
+
+</p><blockquote>
+<center>
+<img src="javauba.gif" width="420" height="240"><p>
+</p></center>
+<strong>Figure&nbsp;7:&nbsp;</strong>
+An CUBA running on behalf of a Java application.  There are three processes
+involved: the Java runtime, the CUBA applet, and finally the Havana system-call
+interceptor.  There can be many CUBAs running at any time, with each represented
+by a separate Java object.  The CUBA communicates with its corresponding Java
+object instance the IPC and shared-memory.  Note that for each CUBA instance
+there is an additional Havana process, as well as a new CUBA process.  The CUBA is
+started up and shut down by the Havana process, and, in case the Java runtime
+abnormally terminates, Havana automatically kills the CUBA and itself, after a
+worst-case timeout of 30 seconds.<br>
+</blockquote>
+
+
+<a name="sec-plugin">
+<h2>4.3. The Netscape CUBA-support Plugin</h2></a>
+
+In order to create a real CUBA system prototype with CUBA applets downloaded
+through the net the version in Figure&nbsp;8 was implemented using Netscape's
+Plugin SDK.  This implementation only supports one CUBA part per interface, with
+each interface being an instance of <tt>java.lang.Applet</tt>.  This version is
+not as efficient as the Sun Java one, as it must compete with Netscape for
+resources, and it has to poll the message queues in order not to block all of
+Netscape.  In addition to this, it has the disadvantages stemming from the use
+of Java. <p>
+
+</p><blockquote>
+<center>
+<img src="plugin.gif" width="420" height="240"><p>
+</p></center>
+<strong>Figure&nbsp;8:&nbsp;</strong>
+An CUBA running on behalf of a Netscape Java applet.  This case is similar
+to that of Java applications:  For each instance of
+a Netscape Java applet making use of CUBA services there are additional
+instances of Havana, the CUBA plugin and its object, as well as a new CUBA
+process. The CUBA communicates with its corresponding Java applet through the
+IPC and shared-memory services provided by the plugin.  
+If Netscape terminates abnormally, Havana kills itself and the CUBA after a
+timeout. <br>
+</blockquote>
+
+The Netscape platform turned out to be quite irksome to develop for, as it
+often crashed unexpectedly and there is no debugging support.  In the end most
+of the bugs were isolated to be caused by the interaction of Java-threads and
+the native Plugin code.  In particular the two following bugs were found:
+<ul>
+  <li> Calling <tt>RMI_GetGlobalRef</tt> from the mouse-click handler (which
+       is in the JavaSystem thread group) kills Netscape, but calling it from
+       JavaScript works fine.
+  </li><li> Killing a thread which is executing in the Plugin class kills Netscape.
+</li></ul>
+
+<a name="sec-perform">
+<h2>5. Performance</h2></a>
+
+The Sun Java CUBA implementation was used for performance measurements, as it
+allows threads to block on IPC message send/receive, as would be the case in a
+real CUBA system.  Performance was measured on two systems, <em>Sparc5</em>, a
+Sun SPARCStation&nbsp;5 (70MHz) with 28MB of memory, and <em>Sparc20</em>, a
+four CPU Sun SPARCStation&nbsp;20 (50MHz) with 256MB of memory, with both
+systems running the Solaris&nbsp;2.5.1 OS. <p>
+
+<a name="sec-microbench">
+</a></p><h3><a name="sec-microbench">5.1. Microbenchmarks</a></h3>
+
+<table width="55%" align="right" cellpadding="3" cellspacing="2">
+<tbody><tr><td>&nbsp;</td><td align="center"><table border="2"><tbody><tr>
+<th>Platform</th><th>Cold CUBA Start</th><th>Warm CUBA Start</th>
+                 <th>Normal IPC</th><th>Havana CUBA IPC</th></tr>
+<tr align="right"><th align="left">Sparc5</th>
+<td>330ms</td><td>30ms</td><td>310us</td><td>1250us</td></tr>
+<tr align="right"><th alight="left">Sparc20</th>
+<td>181ms</td><td>20ms</td><td>250us</td><td>550us</td></tr>
+</tbody></table></td></tr><tr><td></td><td>
+<strong>Table&nbsp;2:&nbsp;</strong>
+The time required for starting Havana and an CUBA, and time per IPC message
+roundtrip, i.e., per an LPC (or LRPC).  CUBA start time is shown for both
+cold- and warm-cache process forking.  IPC time is given for normal IPC between
+two processes, and for when the Havana process filters the system calls of one
+of the processes.
+</td></tr></tbody></table>
+
+Table&nbsp;2 shows some performance numbers critical to the CUBA implementation.
+The time to start a CUBA from the interface involves forking two new processes,
+something which can be costly.  As the table shows this time can vary by an
+order of magnitude, depending on whether the same CUBA has been started
+recently.  Even if the CUBA is started cold, however, this cost is only payed
+once, and can be amortized onto the entire running time of the CUBA.  The
+near half-second overhead may therefore quite often be acceptable. <p>
+
+Of even more critical importance to the CUBA method is IPC performance.  This is
+the crucial factor in evaluating tradeoffs between CUBAs and different applet
+mechanisms, as shown in Section&nbsp;3.  Normal IPC performance in
+Solaris&nbsp;2.x is disappointing, around three times that of the Mach OS
+<a href="#cite-liedtke96">[Liedtke96]</a>.  It gets much worse, however, when
+the Havana process intercepts the IPCs, as in Figure&nbsp;6.  On the
+multi-processor Sparc20 it doubles, but on the Sparc5 it more than triples.
+The latter is somewhat surprising, but is probably due to the higher cost of
+context switching between processes on the single CPU system, with, e.g., cache
+flushes playing a more significant role there. </p><p>
+
+
+<a name="sec-casestudy">
+</a></p><h3><a name="sec-casestudy">5.2. Case Studies</a></h3>
+
+It is insightful to examine how real applets are implemented using CUBAs.
+Candidates for such applets might include ``demo'' applets, such as a
+Mandelbrot-set explorer, larger performance-critical applets, such as a data
+compression facility, or even full-blown applications, such as scientific
+simulations.  This section examines two such real-world applets in detail, one
+of which computes message digest hashes of data, and the other which is an
+interactive MPEG video player.
+
+<a name="sec-md5">
+<h4>5.2.1. Message Digest Computation</h4></a>
+
+The excellent survey in <a href="#cite-small96">[Small96]</a> classifies OS
+extensions, which are a type of applets, into the categories of
+<em>policy</em>, <em>functionality</em> and <em>performance</em>, depending on
+which aspect they are to improve.  The example extension used in that paper
+for the performance category is that of MD5 message-digest computation, which
+is also used here as an example of CUBA applets. <p>
+
+</p><center>
+<table border="2" cellpadding="3" cellspacing="2">
+<tbody><tr align="center"><th></th><th></th><th>C</th><th>CUBA Java</th><th>Java</th>
+<th>Toba</th><th>Modula-3</th><th>Omniware</th></tr>
+<tr align="right"><th valign="center" align="left" rowspan="3">Policy<br>
+(Virtual Memory Page Eviction)</th>
+<td>Raw time</td><td>4.5us</td>
+<td rowspan="3" align="center">No benefit over Java</td><td>141us</td>
+<td>36.9us</td><td>6.3us</td><td>6.3us</td></tr>
+<tr align="right">
+<td>Normalized</td><td><i>1.0</i></td><td><i>31.3</i></td><td><i>8.2</i></td>
+<td><i>1.4</i></td><td><i>1.4</i></td></tr>
+<tr align="right">
+<td>Std. dev.</td><td>0.1%</td><td>0.3%</td><td>0.1%</td>
+<td>2.8%</td><td>0.2%</td></tr>
+<tr align="right"><th valign="center" align="left" rowspan="3">Functionality<br>
+(Log-structured Logical Disk)</th>
+<td>Raw time</td><td>7.2us</td>
+<td rowspan="3" align="center">No benefit over Java</td><td>94us</td>
+<td>29.3us</td><td>11.1us</td><td>8.4us</td></tr>
+<tr align="right">
+<td>Normalized</td><td><i>1.0</i></td><td><i>13.1</i></td><td><i>4.1</i></td>
+<td><i>1.5</i></td><td><i>1.16</i></td></tr>
+<tr align="right">
+<td>Std. dev.</td><td>0.2%</td><td>0.4%</td><td>2.8%</td>
+<td>0.4%</td><td>0.1%</td></tr>
+<tr align="right"><th valign="center" align="left" rowspan="3">Performance<br>
+(Message Digest 5)</th>
+<td>Raw time</td><td>146ms</td><td>158ms</td><td>10368ms</td>
+<td>3324ms</td><td>294ms</td><td>219ms</td></tr>
+<tr align="right">
+<td>Normalized</td><td><i>1.0</i></td><td><i>1.08</i></td><td><i>71.0</i></td>
+<td><i>22.8</i></td><td><i>2.0</i></td><td><i>1.5</i></td></tr>
+<tr align="right">
+<td>Std. dev.</td><td>1.7%</td><td>3.2%</td><td>0.3%</td><td>6.1%</td>
+<td>0.1%</td><td>0.0%</td></tr>
+</tbody></table>
+</center>
+<blockquote>
+<strong>Table&nbsp;3:&nbsp;</strong>
+Performance numbers for different applets and applet mechanisms from
+<a href="#cite-small96">[Small96]</a>.  The applets can be classified
+respectively as Policy, Black-box and Stream extensions.  The first applet
+selects a page to be evicted from physical memory in a virtual memory system;
+the second maintains a mapping between logical and physical disk blocks; the
+third computes an MD5 hash of 1MB of data.  The first two applets
+compute for a very brief time, and are thus not suitable for the CUBA approach.
+The applet mechanisms are, respectively: None (plain C), CUBAs combined with
+Java, plain Java, compiled Java (Toba), type-safety using Modula-3, and
+software-fault-isolation with Omniware.  The CUBA Java and Toba times have been
+scaled down by 33% to allow comparisons with the other values.
+</blockquote>
+
+Table&nbsp;3 shows the performance of several applet mechanisms for applets in
+each category.  The numbers are mostly from <a href="#cite-small96">[Small96]</a>, where they were got on a 75MHz single
+processor Sun SPARCStation&nbsp;20.  This paper adds two columns to the table,
+those for CUBA Java and for Toba, which is a Java compiler described in <a href="#cite-proebsting97">[Proebsting97]</a>.  Toba generates very efficient
+code from the Java class files, and its output code should have better
+performance than achievable with current JIT or continuous compilers. <p>
+
+The Virtual Memory and Logical Disk applets have a Java call time of around
+100us, and using the simple model of Section&nbsp;3 they are therefore not
+candidates for speeding up using CUBAs.  Even so, it is rewarding to examine
+relative performance of the different applet mechanisms for these applets, as
+well as the MD5 one.  As expected, Modula-3 and Omniware have very good
+performance, only a few tens of percent slower than C.  Java has terrible
+performance, and, somewhat surprisingly, so does Toba-compiled Java.  This may
+be due to the difficulty of mapping Java's virtual stack machine to efficient
+code.  Finally, and pleasantly, the Java CUBA combination turns out to have the
+best performance of all applet mechanisms for MD5, with a 66-fold speedup over
+plain Java. </p><p>
+
+</p><blockquote>
+<center>
+<img src="md5perfplot.gif" width="465" height="326"><p>
+</p></center>
+<strong>Figure&nbsp;9:&nbsp;</strong>  Time required for computing an MD5 hash
+for different sized messages, as predicted by the model of Section&nbsp;3, and
+empirically measured.  The lines show predicted behavior, while the points
+give the mean, and the errorbars one standard deviation from it in either
+direction, from the results of 30 runs on the Sparc20.  The upper line is plain
+Java, while the lower is CUBA Java.
+</blockquote>
+
+From the communication and computation times in Tables&nbsp;2 and 3 
+the model of Section&nbsp;3 can be compared against actual measurements.
+By assuming an MD5 of 1KB of data takes 142.6us, that IPC takes 550us, and that
+Java runs 71 times slower than C, the model gives the lines of Figure&nbsp;9.
+The empirical results also shown there is almost exactly those predicted by the
+model, with the small discrepancies present being more than accounted for by
+random system activity and context-switching effects.
+
+
+
+<a name="sec-md5">
+<h4>5.2.2. MPEG Video Decompression</h4></a>
+
+The other ``real'' applet implemented is that of MPEG decompression.  The 
+applet has a Java interface class which draws frames to the display is the CUBA
+part, and a CUBA MPEG decoder, built using the sources of <tt>mpeg_play</tt>.
+From Java and Toba's performance in the last section it is safe to say that 
+there will never be an MPEG decoder written in Java, and this is thus an
+example of an applet which would be impossible without the use of CUBAs.
+
+<blockquote>
+<center>
+<img src="mpegtest.gif" width="498" height="256"><p>
+</p></center>
+<strong>Figure&nbsp;10:&nbsp;</strong>
+One of 100 MPEG video frames of a ballet sequence, displayed in a Java window.  
+</blockquote>
+
+<table width="55%" align="left" cellpadding="3" cellspacing="2">
+<tbody><tr><td align="center"><table border="2"><tbody><tr>
+<th>Platform</th>
+<th>Decoding</th><th><tt>mpeg_play</tt></th><th>MPEGTest</th></tr>
+<tr align="right"><th align="left">Sparc5</th>
+<td>16s (100%)</td><td>30s (188%)</td><td>45s (281%)</td></tr>
+<tr align="right"><th align="left">Sparc20</th>
+<td>11s (100%)</td><td>23s (209%)</td><td>20s (182%)</td>
+</tr></tbody></table></td><td>&nbsp;</td></tr><tr><td>
+<strong>Table&nbsp;4:&nbsp;</strong>
+Time required for decoding and viewing the ballet MPEG video of Figure&nbsp;10.
+The first column is the time required to just decode, not display, the MPEG.
+The viewers, <tt>mpeg_play</tt> and MPEGTest, use X and Java to display 
+the frames, respectively.  Relative performance is shown in parentheses.
+</td><td></td></tr></tbody></table>
+
+Figure&nbsp;10 shows a screenshot of a Java application which uses the CUBA MPEG
+applet to play video.  If accessed through a WWW page, both applet parts are
+downloaded onto the browser's machine, where they run to play MPEG movies from
+the network.  Each MPEG movie is passed to the CUBA through shared memory before
+it is played. Each video frame is also passed through shared memory to the
+interface. <p>
+
+Table&nbsp;4 some performance numbers for the MPEG viewer, and for the X
+<tt>mpeg_play</tt> viewer which has the same decoding routines.  Note that on
+the Sparc20 the bottleneck is Java displaying the frames, since the decoder is
+running on a separate processor, and can decode the next frame while the
+interface is displaying the last one.  On the Sparc5 the viewer spends
+two-thirds of its time in the Java AWT.  Many WWW applets are interface-bound
+in this manner, but as can be seen from the performance of the
+<tt>mpeg_play</tt> viewer this is unacceptable performance from the Java AWT
+bitmap-display routines.  </p><p>
+
+<a name="sec-concl">
+</a></p><h2><a name="sec-concl">6. Conclusions</a></h2>
+
+The expected conclusion was that CUBAs speed up compute-bound applets by a
+factor of 2 to 10, when comparing against interpreted Java, and by 20% to 100%
+when compared against JIT-compiled Java.  The results are far better than this:
+CUBAs provide orders-of-magnitude improvements in computation speed for both
+plain and compiled Java.  <p>
+
+The reader is encouraged to visit
+<a href="#">
+<tt>http://www.cs.cornell.edu/home/ulfar/cuba/</tt></a>
+where the Netscape version of CUBAs can be downloaded, and the MPEG applet can
+be run.  Enjoy the ballet! </p><p>
+
+
+<a name="sec-refs">
+</a></p><h2><a name="sec-refs">7. References</a></h2>
+
+<dl compact="">
+
+<a name="cite-abrash97">
+</a><dt><a name="cite-abrash97">[Abrash97]</a>
+</dt><dd> M. Abrash.
+<em>Quake</em>'s 3-D Engine: The Big Picture.
+<em>Dr. Dobb's Journal</em>, <b>22</b>(19), Spring 1997.
+
+<a name="cite-adl96">
+</a></dd><dt><a name="cite-adl96">[Adl-Tabatabai96]</a>
+</dt><dd> A. Adl-Tabatabai, G. Langdale, S. Lucco, R. Wahbe.
+Efficient and Language-Independent Mobile Programs.
+In <em>Proceedings of the Conference on Programming Language Design and Implementation</em>, Philadephia, PA, May, 1996, pp. 127-136.
+     
+<a name="cite-banerji96">
+</a></dd><dt><a name="cite-banerji96">[Banerji96]</a>
+</dt><dd> A. Banerji, V. Panteleenko, G. Wyant, D. Cohn.
+<a href="https://web.archive.org/web/20160817092648/http://www.nd.edu:80/Departments/EN/CSE/DCRLab/HomePages/axb/asplos.ps">
+Quantitative Analysis of Protection Options.</a> 
+Technical Report TR-96-20, University of Notre Dame, 1996.
+     
+<a name="cite-bershad95">
+</a></dd><dt><a name="cite-bershad95">[Bershad95]</a>
+</dt><dd>  B.N. Bershad, S. Savage, P. Pardyak, E.G. Sirer, M.E. Fiuczynski, D.
+Becker, S. Eggers and C. Chambers.
+<a href="https://web.archive.org/web/20160817092648/http://www.cs.washington.edu/research/projects/spin/www/papers/SOSP95/sosp95.ps">
+Extensibility, Safety and Performance in the SPIN Operating System.</a>
+In <em>Proceedings of the 15th ACM Symposium on
+Operating System Principles (SOSP)</em>(Copper Mountain Resort, Colo.,
+Dec. 1995) ACM Press, 1995, pp. 267-284.
+     
+<a name="cite-engler95">
+</a></dd><dt><a name="cite-engler95">[Engler95]</a>
+</dt><dd>  D.R. Engler, M.F. Kaashoek and J. O'Toole. 
+<a href="https://web.archive.org/web/20160817092648/http://www.pdos.lcs.mit.edu/papers/exokernel-sosp95.ps">Exokernel,
+An Operating System Architecture for Application-level Resource Management.</a>
+In <em>Proceedings 
+of the 15th ACM Symposium on Operating System Principles (SOSP)</em>
+(Copper Mountain Resort, Colo., Dec. 1995) ACM Press, 1995, pp. 251-266.
+
+<a name="cite-goldberg96">
+</a></dd><dt><a name="cite-goldberg96">[Goldberg96]</a>
+</dt><dd>I. Goldberg, D. Wagner, R. Thomas, E. A. Brewer,
+<a href="https://web.archive.org/web/20160817092648/http://www.cs.berkeley.edu/~daw/janus-usenix96.ps">
+A Secure Environment for Untrusted Helper Applications: Confining the Wily Hacker.</a>
+USENIX Security Symposium, 1996. 
+
+<a name="cite-gosling96">
+</a></dd><dt><a name="cite-gosling96">[Gosling96]</a>
+</dt><dd>J. Gosling, H. McGilton. 
+<a href="https://web.archive.org/web/20160817092648/http://www.javasoft.com:80/doc/language_environment/">
+The Java Language Environment: A White Paper.</a>  
+Javasoft (Sun Microsystems), May, 1996.
+
+<a name="cite-gray96">
+</a></dd><dt><a name="cite-gray96">[Gray96]</a>
+</dt><dd> R. S. Gray.
+<a href="https://web.archive.org/web/20160817092648/http://www.cs.dartmouth.edu/~agent/papers/tcl96.ps.Z">Agent Tcl:
+     A Flexible and Secure Mobile-Agent System.</a>
+In <em>Proceedings of the Fourth Annual Tcl/Tk Workshop</em>,
+Monterey, CA, July, 1996.      
+
+<a name="cite-grimshaw97">
+</a></dd><dt><a name="cite-grimshaw97">[Grimshaw97]</a>
+</dt><dd> A. S. Grimshaw, W. A. Wulf,
+The Legion Vision of a Worldwide Virtual Computer.
+<em>Communications of the ACM</em>, <b>40</b>(1), January, 1997,
+     pp. 39-45.
+
+<a name="cite-kistler96">
+</a></dd><dt><a name="cite-kistler96">[Kistler96]</a>
+</dt><dd>  T. Kistler.
+<a href="https://web.archive.org/web/20160817092648/http://www.ics.uci.edu/~kistler/ics-tr-96-54.ps">
+Dynamic Runtime Optimization</a>
+Technical Report No. 96-54, Department of Computer Science, University of
+       California, Irvine; November, 1996.
+
+<a name="cite-liedtke96">
+</a></dd><dt><a name="cite-liedtke96">[Liedtke 96]</a>
+</dt><dd> J. Liedtke. 
+Toward Real Microkernels. 
+<em>Communications of the ACM</em>, 39(9):70-77, September, 1996.
+
+<a name="cite-milner90">
+</a></dd><dt><a name="cite-milner90">[Milner90]</a>
+</dt><dd>  R. Milner, M. Tofte, R. Harper.
+The Definition of Standard ML.
+MIT Press, Cambridge MA, 1990.
+
+<a name="cite-morrisett96">
+</a></dd><dt><a name="cite-morrisett96">[Morrisett96]</a>
+</dt><dd>  G. Morrisett, D. Tarditi, P. Cheng, C. Stone, R. Harper, P. Lee.
+<a href="https://web.archive.org/web/20160817092648/http://www.cs.cornell.edu/Info/People/jgm/papers/wcsss.ps">
+The TIL/ML Compiler: Performance and Safety Through Types.</a> 
+<em>Workshop on Compiler Support for Systems Software</em>, 1996.
+
+<a name="cite-necula97">
+</a></dd><dt><a name="cite-necula97">[Necula97]</a>
+</dt><dd>  G. Necula.
+<a href="https://web.archive.org/web/20160817092648/http://www.cs.cmu.edu/afs/cs/usr/necula/papers/popl97.ps">
+Proof-Carrying Code.</a> 
+In <em>Proceedings of the 24th Annual Symposium on 
+Principles of Programming Languages</em>, Paris, France, January 1997,
+     pp. 106-119.
+
+<a name="cite-nelson91">
+</a></dd><dt><a name="cite-nelson91">[Nelson91]</a>
+</dt><dd>  G. Nelson editor.
+System Programming in Modula-3.
+Prentice-Hall, Englewood Cliffs NJ, 1991.
+
+<a name="cite-plezbert97">
+</a></dd><dt><a name="cite-plezbert97">[Plezbert97]</a>
+</dt><dd>  M. P. Plezbert, R. K. Cytron.
+<a href="https://web.archive.org/web/20160817092648/http://www.cs.wustl.edu/~plezbert/popl/popl97.ps">
+Does ``Just in Time'' = ``Better Late than Never''?</a> 
+In <em>Proceedings of the 24th Annual Symposium on 
+Principles of Programming Languages</em>, Paris, France, January 1997,
+     pp. 120-131.
+
+<a name="cite-proebsting97">
+</a></dd><dt><a name="cite-proebsting97">[Proebsting97]</a>
+</dt><dd> T. A. Proebsting, G. Townsend, P. Bridges, J. H. Hartman, T. Newsham,
+     S. A. Watterson 
+<a href="https://web.archive.org/web/20160817092648/ftp://ftp.cs.arizona.edu/reports/1997/TR97-01.ps">
+Toba: Java for Applications: A Way Ahead of Time (WAT) Compiler.</a> 
+Technical Report TR97-01, Department of Computer Science,
+     University of Arizona; January 1997. 
+
+<a name="cite-small96">
+</a></dd><dt><a name="cite-small96">[Small96]</a>
+</dt><dd> C. Small, M. Seltzer.
+<a href="https://web.archive.org/web/20160817092648/http://www.eecs.harvard.edu/~chris/papers/bakeoff.ps">
+A Comparison of OS Extension Technologies.</a> 
+In <em>Proceedings of the 1996 USENIX Technical Conference</em>, 
+New Orleans, LA, 41-54, January, 1996.
+     
+<a name="cite-small97">
+</a></dd><dt><a name="cite-small97">[Small97]</a>
+</dt><dd> C. Small.
+<a href="https://web.archive.org/web/20160817092648/http://www.eecs.harvard.edu/~chris/papers/misfit.ps">
+A Tool For Constructing Safe Extensible C++ Systems.</a> 
+To appear in <em>Proceedings of the 3rd Conference on Object-Oriented
+Technologies and Systems</em>, Portlang, OG, June, 1997.
+
+<a name="cite-vahdat97">
+</a></dd><dt><a name="cite-vahdat97">[Vahdat97]</a>
+</dt><dd> A. Vahdat, M. Dahlin, P. Eastham, C. Yoshikawa, T. Anderson, D. Culler.
+<a href="https://web.archive.org/web/20160817092648/http://now.cs.berkeley.edu/WebOS/hotos6.ps">
+WebOS: Software Support For Scalable Web Services</a>, 
+submitted for publication in HotOS'97, January, 1997. 
+
+<a name="cite-wahbe93">
+</a></dd><dt><a name="cite-wahbe93">[Wahbe93]</a>
+</dt><dd> R. Wahbe, S. Lucco, T. E. Anderson, S. L. Graham.
+<a href="https://web.archive.org/web/20160817092648/http://http.cs.berkeley.edu/~tea/sfi.ps">
+Efficient Software-Based Fault Isolation.</a> 
+<em>Operating System Review</em>, <b>27</b>(5), ACM Press, 1993.
+</dd></dl>     
+
+<hr>
+<address>
+<a href="https://ulfar.info">Úlfar Erlingsson</a>
+&lt;<a href="#">ulfar@cs.cornell.edu</a>&gt;
+</address>
+ 
+
+</body></html>
