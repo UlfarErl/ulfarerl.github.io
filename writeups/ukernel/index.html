@@ -1,0 +1,726 @@
+
+<!-- saved from url=(0100)https://web.archive.org/web/20160831193218/http://www.cs.cornell.edu/home/ulfar/ukernel/ukernel.html -->
+<html>
+  <head>
+<title>Interface Design: Microkernels</title>
+</head>
+
+<body bgcolor="#ffffff" fgcolor="#000000"> 
+<center>
+<h1>Microkernels</h1>
+The extent to which simple, efficient operations are a good choice in a
+kernel interface design.
+<h3><a href="https://ulfar.info">Úlfar Erlingsson</a> and
+  <a href="https://www.linkedin.com/in/athanasios-kyparlis-4781434/">Athanasios Kyparlis</a>, Fall 1996</h3>
+</center>
+
+<hr>
+<blockquote>
+<strong>Disclaimer:</strong>
+This survey is not finished work, and its discussion may not even reflect
+my current beliefs.  It has been put online as a service to the web community,
+and should be useful as at least the references are correct!
+</blockquote>
+<hr>
+<ol>
+<li><a href="#intro"><strong>Introduction</strong></a><br>
+</li><li><a href="#first"><strong>The First Generation</strong></a><br>
+  <ol>
+  <li> <a href="#first-goals">Original Goals</a><br>
+  </li><li> <a href="#first-ineff">Reasons For Inefficiency</a>
+  </li><li> <a href="#first-ipc">Inter-Process Communication Performance</a>
+  </li></ol>
+</li><li><a href="#current"><strong>The Current Generation</strong></a><br>
+  <ol>
+  <li> <a href="#current-l4">L4</a>
+  </li><li> <a href="#current-exo">Exokernel</a>
+  </li><li> <a href="#current-spin">SPIN</a>
+  </li></ol>
+</li><li><a href="#concl"><strong>Conclusions</strong></a><br>
+</li><li><a href="#cite"><strong>References</strong></a><br>
+</li></ol>
+<hr>
+
+
+<a name="intro">
+<h2>1. Introduction</h2></a>
+Traditionally the 'kernel' of an Operating System is that part
+which is required by all other software running on the system.   Thus the
+kernel corresponds to the OS part of the Trusted Computing Base (TCB), those
+parts of a computing system whose correct behavior is prerequisite to the
+correct operation of any other part. <p>
+
+The basic idea of microkernels is to minimize the kernel, and implement as
+much of it as possible outside the TCB.  The kernel should only export
+simple, low-level operations which hopefully allow for more efficient
+application implementations.  This idea dates back to
+<a href="#cite-hansen70">[Hansen&nbsp;70]</a>, and a good overview can be found
+in <a href="#cite-liedtke96">[Liedtke&nbsp;96]</a>.
+Traditionally kernels are 'monolithic' in the sense that they implement all
+their functionality in a relatively unstructured fashion within the TCB.  
+The advantages of microkernels are obvious from a software engineering
+standpoint:
+</p><ul>
+  <li> The TCB is made smaller, reducing the chances of errors due to its
+       faulty implementation.
+  </li><li> The OS is more modular and thus more flexible and extensible.
+  </li><li> Services previously in the TCB can now possibly have more than one
+       different implementation, perhaps even running concurrently.
+</li></ul>
+
+Microkernels initially met with great enthusiasm and in the late 80s there was
+much work on them in both academic and commercial settings.  This 
+wave of initial enthusiasm subsided when people started encountering what
+seemed to be inherent difficulties with the flexibility and efficiency of
+microkernel implementations:
+<ul>
+  <li> For some frequent operations, e.g. networking, the overhead of
+       context-switching was too great for an out-of-kernel implementation.
+       Thus the microkernels were not as efficient as originally thought.
+  </li><li> There are great difficulties with supporting more than one
+       implementation of a basic system service, especially when more than one
+       is to run concurrently.
+       Thus the microkernels were not nearly as flexible as supposed.
+</li></ul>
+
+These difficulties were overcome by various compromises to the original
+microkernel ideals.  Several efficiency-critical features were brought back
+into the kernel and the addition of new features into the kernel was supported
+through downloadable binary code, or trusted 'kernel-loaded modules'. <p>
+
+But this integration of most drivers and servers back into the TCB largely
+eliminates the benefits of the microkernel approach, in the end resulting in an
+even more complex monolithic-like OS kernel. </p><p>
+
+Recently there have been several second generation implementations following the
+microkernel philosophy, which claim to solve the flexibility and efficiency
+problems of the first generation.  How these implementations achieve this goal
+differs wildly, with the following three being representative:
+</p><ul>
+  <li> <strong>L4</strong> <a href="#cite-liedtke96">[Liedtke&nbsp;96]</a>
+       has a very small microkernel and makes use of
+       user-level servers, in the spirit of the first generation.
+       It achieves its goals with very fast Inter-Process Communication and a
+       flexible memory management scheme.
+  </li><li> <strong>Exokernel</strong>, <a href="#cite-engler95">[Engler&nbsp;95]</a>
+       a tiny microkernel, does away with all traditional OS kernel
+       abstractions, simplifying the task of the kernel to that of secure
+       multitasking of resources.
+  </li><li> <strong>SPIN</strong>  <a href="#cite-bershad95">[Bershad&nbsp;95]</a>
+       takes the approach of downloading code into the
+       kernel, but in a safe fashion which does not really enlarge the TCB.
+</li></ul>
+It is not at all clear whether these new-generation solutions are truly viable
+for real operating systems.  What is lacking is the presence of real OSs built
+using the strategies of the above systems, much as Chorus and Mach are real
+OSs built using the first-generation microkernel strategies.  Even so, the
+presence of the above systems gives great hope for the future of the
+microkernel approach. <p>
+
+
+<a name="first">
+</a></p><h2><a name="first">2. The First Generation</a></h2>
+There were several real microkernel-based OSs built in the late eighties and
+early nineties.  Perhaps the two most notable of these are
+Mach <a href="#cite-golub90">[Golub&nbsp;90]</a>
+and Chorus <a href="#cite-guillemont82">[Guillemont&nbsp;82]</a>.
+Mach, developed at CMU, was the most successful and has been used in
+several commercial systems, such as the NeXTSTEP OS.  <p>
+
+<a name="first-goals">
+</a></p><h3><a name="first-goals">2.1. Original Goals</a></h3>
+There are two goals a new systems architecture must achieve in order to gain
+widespread acceptance, those of efficiency and flexibility.  Thus originally
+microkernels had the goal of running applications faster than existing
+monolithic kernels, or at least not slower.  In addition, in order to achieve a
+real advance in OS design, microkernels necessarily were to allow for new
+application structures, as well as supporting all existing types of
+applications. 
+
+Apart from the above there were great expectations for the microkernel
+approach as it was being introduced, and many people expected most or all of
+the following benefits:
+<ol>
+  <li> A small and simple kernel means less code, as well as simpler code, in
+       the TCB and thus smaller chances of errors therein.
+  </li><li> A clean microkernel design will enforce and support a highly modular
+       structure of the entire OS.
+  </li><li> A smaller kernel means more flexibility and extensibility, since there
+       are fewer existing structures hampering change.  Adding new services is
+       much easier since the servers run independently of each other, and
+       ideally do not require any service-specific support from the kernel.
+  </li><li> Services previously within the kernel, now provided by external
+       servers, can make use of kernel-services such as multitasking and
+       Inter-Process Communication (IPC). 
+  </li><li> Servers may crash without the OS crashing, and the OS may even start a
+       new copy of the server to replace the one which went down.
+  </li><li> Device drivers can be run as servers and reap all the server benefits
+       described above.
+  </li><li> A microkernel should be able to support multiple personalities in the
+       form of different services, e.g., APIs, overlaid general OSs etc.,
+       without the penalties of emulation on top of a full-fledged OS.
+</li></ol>
+
+<a name="first-ineff">
+<h3>2.2. Reasons For Inefficiency</h3></a>
+After several microkernels had been built into real OSs, and were being used
+for real applications, people found that their performance, when measured
+objectively as in <a href="#cite-bershad92">[Bershad&nbsp;92]</a>,
+was quite lackluster.  This inefficiency turned out to have several culprits,
+including the following:
+<ol>
+  <li> Running previously kernel-integrated services in user-mode requires the
+       use of a Remote Procedure Call (implemented with two IPCs)
+       whenever the kernel or client uses a service.  The cost of the RPC turned
+       out to be much higher than a simple system call to the kernel,
+       on the order of 200 microseconds per RPC versus 40 microseconds for a
+       traditional system call <a href="#cite-liedtke93">[Liedtke&nbsp;93]</a>.
+  </li><li> The cost of memory references (the Memory Cycles Per Instruction, or
+       MCPI) turned out to be much higher in microkernel OSs than in monolithic
+       OSs, when running the same applications
+       <a href="#cite-chen93">[Chen&nbsp;93]</a>.
+       The reasons for this included the following:
+       <ul>
+         <li> Worse locality properties of the combined microkernel OS code.
+         </li><li> System self-interference, incorrectly invalidating cache lines,
+              due to more modularity of the OS.
+         </li><li> More inter-module copying due to the higher modularity of the OS.
+       </li></ul>
+  </li><li> The ``legacy'' interfaces and implementation code of the microkernels
+       did not allow for really efficient functionality of some OS features.
+       This was largely due to the development history of the microkernels
+       which had been derived from monolithic kernels, inheriting many of their
+       interfaces and implementation strategies
+       <a href="#cite-liedtke95">[Liedtke&nbsp;95]</a>.
+</li></ol> <p>
+
+<a name="first-ipc">
+</a></p><h3><a name="first-ipc">2.3. Inter-Process Communication Performance</a></h3>
+The first item above, IPC cost, has been the primary focus of work intended
+to improve microkernel performance, since it has far more impact than MCPI.
+Even so, attempts at improving IPC cost in first-generation microkernels, Mach
+in particular, were not successful enough, due to the third reason above.
+Table&nbsp;1 below shows the final IPC performance of the Mach OS after much
+work had been done to optimize the IPC. 
+The work on L3, which lead to L4, finally managed to break this performance
+barrier. <p>
+
+In <a href="#cite-liedtke96">[Liedtke&nbsp;96]</a> it is noted that this Mach
+IPC performance is bad enough that roughly 10000 instructions must be executed
+between successive RPC calls for only a 10% degradation in speed relative to a
+monolithic kernel.  This prohibits fine-grained client/server application
+structures.  More generally, the lack of efficiency in first-generation and
+traditional kernels prohibits flexible application/OS structures such as those
+supported by IPC. </p><p>
+
+In comparison the L4 and Exokernel IPCs are a generous order
+of magnitude faster, due to their clean-slate implementations.
+These kernels are able to do RPC calls every 400th instruction with only 10%
+degradation in speed, which should be fine-grained enough for almost all
+applications. The SPIN kernel is based on Mach, and therefore shares its high
+IPC cost, but this may not be  fatal to its performance due to alternative
+approach to extensibility. </p><p> 
+
+</p><center>
+<table border="1" cellpadding="3" cellspacing="1">
+<tbody><tr>
+<th>&nbsp;</th> <th colspan="2">IPC</th></tr>
+<tr>
+<th>OS</th>              <th>microseconds</th>  <th>instructions</th> </tr>
+<tr align="right">
+<th align="left">Mach</th> <td>115.0 us</td>    <td>1150</td>  </tr>
+<tr align="right">
+<th align="left">L4</th>   <td>5.0 us</td>      <td>50</td>    </tr>
+<tr align="right">
+<th align="left">Exokernel</th><td>1.4 us</td><td>30</td>    </tr>
+<tr align="right">
+<th align="left">SPIN</th> <td>102.0 us</td>    <td>1100</td>  </tr>
+</tbody></table><br>
+<strong>Table 1.</strong> IPC Performance of the contenders.
+</center> <p>
+
+The values in the above table, from
+<a href="#cite-bershad95">[Bershad&nbsp;95]</a>,
+<a href="#cite-engler95">[Engler&nbsp;95]</a>, and
+<a href="#cite-liedtke95">[Liedtke&nbsp;95]</a>,
+should be taken with a grain of salt since the
+comparisons were done on different machines, running at different speeds and
+with different instructions.  Even so the values should be a good indication of
+the relative difference in the IPC performance of the four systems. </p><p>
+
+
+
+<a name="current">
+</a></p><h2><a name="current">3. The Current Generation</a></h2>
+The following three systems take radically different approaches to improving
+the performance of the first-generation microkernels.  We therefore describe
+each system in some detail and in isolation from the others, leaving a
+comparison of them to the conclusion.
+
+<a name="current-l4">
+<h3>3.1. L4</h3></a>
+L4, <a href="#cite-liedtke96">[Liedtke&nbsp;96]</a>,
+was developed by J.&nbsp;Liedtke and his group in 1995 and is the direct
+descendant of L3, a first-generation microkernel. 
+The from-scratch development of L4, along with its small size and simple
+interfaces, allow it to escape the third legacy-code type of microkernel woes.
+<p>
+
+L4 is based on the thesis that microkernels are <em>processor dependent</em>,
+i.e., that like code optimizers, microkernels are inherently not portable,
+although they improve the portability of the whole system.  L4 supplies
+three abstractions, address spaces, threads and IPC, and implements only seven
+system calls. The threads in L4 are user-level, but with support from the kernel
+for communication and address-space management.  These two last abstractions,
+address spaces and IPC, are particular interesting in L4, and are discussed in
+detail below. </p><p>
+
+</p><h4>3.1.1. Address Spaces</h4>
+The L4 microkernel provides the basic mechanisms to implement physical memory
+management and various protection schemes.  The basic idea is to support
+<em>recursive construction</em> of address spaces outside the kernel, as shown
+in Figure&nbsp;1 below. <p>
+
+</p><center>
+<img src="l4_address_spaces.gif" width="294" height="216"><br><br>
+<strong>Figure 1.</strong> Recursively Constructed Address Spaces in L4.
+</center><p>
+
+The initial address space represents the physical memory and is owned by
+the initial-memory server.  The owner of a virtual page can, using operations
+provided by L4, transfer its ownership to (grant), or share it with (map), a
+consenting recipient process.  The owner can also remove any shared pages
+(demap) from the recipient's address space, without any prior agreement between
+the two processes. </p><p> 
+
+This functionality allows the implementation of memory management and paging
+outside the kernel.  Mapping and demapping are adequate to implement memory
+managers and pagers on top of the microkernel.  Granting is used only in
+special situations to avoid double bookkeeping and address-space overflow, see
+<a href="#cite-liedtke95">[Liedtke&nbsp;95]</a>.  In order to verify process
+consent IPC is used to implement memory management and paging, which further
+emphasizes the need for fast IPC. </p><p> 
+
+</p><h4>3.1.2. IPC implementation</h4>
+L4 inherited a surprisingly fast IPC implementation from an improved
+version of L3 (see <a href="#cite-liedtke93">[Liedtke&nbsp;93]</a>),
+whose performance can be seen in Table&nbsp;1.
+This order-of-magnitude improvement in IPC time was achieved 
+using a great variety of optimizing techniques.  Below we discuss some of those
+techniques which resulted in the largest performance gains, with the full set
+to be found in <a href="#cite-liedtke93">[Liedtke&nbsp;93]</a>. <p>
+
+</p><ul>
+<li> <strong>Passing Short Messages</strong>
+     A high percentage of IPC messages are very short.  By transferring those
+     messages in registers a two-fold performance improvement can be obtained.
+</li><li> <strong>Copying Large Data Messages</strong>
+     Most microkernels transfer messages between processes by a twofold copy,
+     from process A space into kernel space into process B space.
+     This double copy is superfluous when message buffering is not
+     required.  The performance hit is very great, especially for long
+     messages, since Translation Lookaside Buffer (TLB) and cache misses are
+     incurred.  L4 allows for single-copy transfers by temporarily sharing the
+     target region with the sender, resulting in a two-fold performance
+     improvement for 512-byte messages, and more for longer messages.
+</li><li> <strong>Lazy Scheduling</strong>
+     Conventional IPC requires updating of thread scheduler queues.
+     Performance can be improved by
+     delaying the movement of threads within/between queues until the queues
+     are queried.  This ``lazy'' scheduling is achieved
+     by setting state flags in the Thread Control Blocks and then scanning 
+     queues at query time for threads which should be moved to different
+     queues.  This weakens the semantics of queues, and occasionally causes
+     an expensive queue operation, but overall improves the performance of
+     small message IPC by around 25%.
+</li></ul>
+
+
+<a name="current-exo">
+<h3>3.2. Exokernel</h3></a>
+Exokernel, <a href="#cite-engler95">[Engler&nbsp;95]</a>,
+was developed at MIT in 1994-1995. The main motivation behind its
+development is that kernel-provided abstractions are too costly and
+restrict flexibility.  This thesis is supported by a version of the
+"end-to-end" argument: Applications know better than OSs what the goal of
+their resource management decisions should be and, therefore, they should
+be given as much control as possible over those decisions. <p>
+
+The microkernel should, therefore, only provide the minimal
+necessary set of primitives to securely multiplex hardware resources.
+Higher-level functionality is provided by library OSs, which are user-supplied
+and untrusted by the Exokernel.  In order for the Exokernel to be as simple and
+efficient as possible even its exported interfaces are hardware dependent.
+Most of the time the Exokernel is simply exporting hardware functionality. </p><p>
+
+</p><center>
+<img src="exokernel_structure.gif" width="444" height="266"><br><br>
+<strong>Figure 2.</strong> The Structure of Exokernel-based Application/OSs.
+</center><p>
+
+Figure&nbsp;2 above shows the structure of an Exokernel-based system with two
+applications making use of different library OSs.  As the Exokernel has to
+accommodate for untrusted higher-level OSs its main goal is to securely export
+and multiplex the hardware primitives and resources. The Exokernel employs
+three techniques to accomplish this, <em>Secure Bindings</em>,
+<em>Visible Resource Revocation</em> and <em>Abort Protocols</em>, each of
+which is discussed below.
+
+</p><h4>3.2.1. Secure Bindings</h4>
+As the actual management of resources is left to library OSs, there must
+be a mechanism for separating the protection of the resources from their
+management.  Secure bindings are this mechanism, and the Exokernel 
+implements them using three different techniques: <em>hardware mechanisms</em>,
+<em>software caching</em> and <em>downloadable application code</em>. <p>
+
+A common hardware mechanism is the TLB.  Secure bindings can be
+implemented as mappings from virtual to physical addresses, i.e., 
+as a TLB entry.  If the hardware TLB is not large enough it is wrapped in
+a larger software TLB to cache such mappings.  Another hardware mechanism,
+available on some Silicon Graphics systems, is a frame buffer with an ownership
+field associated with each pixel.  There the hardware deals with protection of
+the frame buffer, with the Exokernel only being involved when pixels change
+ownership. It is also possible to download code into the kernel which is
+invoked on every resource access or event to determine ownership and what
+actions the kernel should perform.  A packet filter is an example of such code.
+</p><p> 
+
+Actually, this feature of  downloading code can be used for more than just the
+implementation of secure bindings.  More generally, an 
+<em>Application-specific Safe Handler</em> (ASH) can be downloaded into
+the kernel and be allowed to perform general computation.  This capability is
+performance motivated and is used to reduce the number of
+context switches between kernel and user mode, especially in situations
+where time limits make these switches impractical, such as network ACKs on
+packet receives.  The ASHs, and in general all downloaded code, are untrusted
+and are made safe by a combination of code inspection (type-safe languages are
+used), guarded interpretation and sandboxing, much as in SPIN. </p><p>
+
+</p><h4>3.2.2. Visible Resource Revocation</h4>
+Visible revocation has higher latency than traditional invisible
+revocation but allows the library OSs to guide deallocation and know about
+resource scarcity. 
+The Exokernel exports physical names for efficiency and better resource 
+management, as this allows the elimination of a level of indirection
+and, also, physical names usually encode useful resource attributes.
+This makes visible revocation necessary, since the library OS needs to
+update its physical references. <p>
+
+</p><h4>3.2.3. Abort Protocols</h4>
+As the library OSs are not trusted, the Exokernel should accommodate for
+their un-cooperation.  When a revocation request is not satisfied in a timely
+manner, the Exokernel has the power to break any relevant secure bindings ``by
+force'' and regain the requested resource.  The Exokernel notifies the
+mischievous library OS of the revocation but doesn't take any more drastic
+measures.  An alternative approach would have been to kill the relevant
+application, but this was decided against in order to minimize damage. <p>
+
+</p><h4>3.2.4. Reservations</h4>
+The Exokernel approach is very radical, and inspires excitement reminiscent of
+the enthusiasm for the original microkernels.  The fate of those microkernels
+should, however, have a sobering effect.  It should be noted that the main
+Exokernel papers do not discuss several key aspects of OSs, such as file
+systems, and their reliance on special hardware for efficient frame buffers
+feels like cheating.  Thus the Exokernel approach of hardware-level
+non-abstractions may only be good for specialized machine-code-level
+applications such as the WWW server described in
+<a href="#cite-kaashoek96">[Kaashoek&nbsp;96]</a>.
+Even so, this incompleteness may just be a sign of the immaturity of the
+current Exokernel implementations, rather than an inherent problem of the
+approach.  Indeed there is a new paper,
+<a href="#cite-grimm96">[Grimm&nbsp;96]</a>, which deals with the
+implementation of an efficient ``Exo-file-system''. <p> 
+
+
+<a name="current-spin">
+</a></p><h3><a name="current-spin">3.3. SPIN</a></h3>
+SPIN, <a href="#cite-bershad95">[Bershad&nbsp;95]</a>,
+is based on the last version of the Mach microkernel, adding to it the
+ability to download safe code and thus extend the kernel.  As such it shows,
+in a way, the latest generation of techniques developed to combat the
+lackluster performance of first-generation microkernel OSs.  It's presentation
+here is therefore both appropriate and necessary. <p>
+
+SPIN uses language and link-time mechanisms to
+allow the dynamic extension of kernel services.  Applications can
+download code for new OS services into the kernel, and are thus able to
+create fine-grained OS interfaces tailored to their specific needs.
+The extensions are translated by a kernel compiler, dynamically linked into
+the kernel and executed within the kernel's virtual address space. </p><p>
+
+</p><h4>3.3.1. Flexibility</h4>
+The above approach to kernel extensibility immediately brings up the question
+of safety:  Can the user-supplied code be trusted?
+SPIN addresses this problem by using a type-safe language, Modula-3, and
+by <em>sandboxing</em> the downloaded code.  Thus the compiler performs static 
+analysis and inserts run-time checks, guaranteeing that the compiled code does
+not violate the integrity of the kernel, other modules or user-level code.
+As the kernel makes no assumptions about the safety of the imported code,
+the claim can be made that the compiled extensions do not increase the TCB.
+The isolation of each individual module
+guarantees that if an application crashes, e.g., due to a faulty extension
+module downloaded into the kernel, the rest of the system is not affected. <p>
+
+SPIN provides a set of <em>core</em> services for
+managing memory and processor resources.  Their level is similar to the
+internal interfaces found in monolithic OSs.  Kernel extensions can use the
+core services as building blocks, as well as just perform arbitrary computation.
+The core services include operations supporting application control over
+virtual-memory, e.g., translation services for addresses.  The core services
+also include lower-level interfaces for process management, defining a set of
+events to be handled by the users thread package and scheduler, as well as
+including a global scheduler which determines the recipient threads package of
+an event. </p><p>
+
+</p><h4>3.3.2. Performance</h4>
+The advantages of kernel extensions with regard to flexibility and
+extensibility are obvious, allowing even on-line modification of the kernel.
+As for performance, adding functionality to kernel reduces to some extent the
+number of IPCs, both to/from the kernel and between processes.
+This in a way compensates for the high IPC cost measured.  Even so it may be
+the case that the optimizations applied to L4 will work for SPIN also, reducing
+the cost of the remaining IPC operations. <p>
+
+Another, potentially more crucial, performance problem is the efficiency of the
+kernel compiler. Proving a code module safe is not a trivial task and the
+resulting latency of installing new kernel extensions can sometimes be
+unacceptable.  However, the current version of SPIN uses an external compiler
+which is an improvement from previous interpreter or internal compiler based
+systems <a href="#cite-pu88">[Pu&nbsp;88]</a>.
+In SPIN the compiler can be multitasked and the size of the kernel is 
+smaller.  Further improvements to the compiler interface might include caching
+compiled code to reduce amortized compile-time latency, and specialized
+optimizations dealing with such things as nested IPC redirections. </p><p>
+
+
+<a name="concl">
+</a></p><h2><a name="concl">4. Conclusions</a></h2>
+First let us look at how the three systems we examined above meet the original
+goals of microkernels stated in <a href="#first-goals">Section&nbsp;2.1</a>.
+All three systems are reported to perform as well, or better, than the
+traditional monolithic kernels, and all three can be said to support novel
+application structures (recursive address spaces, library OSs and kernel
+extensions respectively).  So what remains is to check the enumerated list of
+<a href="#first-goals">Section&nbsp;2.1</a>:
+<ol>
+  <li> All three have small TCBs, L4 and Exokernel being only a few kilobytes
+       in size.  SPIN is the largest of the three, as large as Mach (a few
+       hundred kilobytes).
+  </li><li> This can be argued both ways for the three systems.  L4 provides a small
+       set of simple interfaces and does indeed support a modular structure.
+       Exokernel and SPIN, however, allow applications and OS parts to be as
+       intertwined as desired, outside and inside the kernel respectively.
+  </li><li> All three systems seem to satisfy this criterion.  Exokernel, with its
+       lack of abstractions is indeed very flexible; L4 has simple abstractions
+       designed to be as flexible as possible; and SPIN has a directly
+       extensible kernel.  In the case of L4 and SPIN, however, it is not so
+       clear whether there could be two radically different servers for the
+       same resource running concurrently, since the given abstractions may not
+       be flexible enough for this.
+  </li><li> This is satisfied in all three systems, although more complicated than
+       traditionally in SPIN due to the interaction of code running inside and
+       outside the kernel.
+  </li><li> All three systems support this fully, at least for servers which don't
+       require access to hardware features which can corrupt the entire system,
+       such as DMA.  For those servers, however, there is nothing which can be
+       done to eliminate the possibility of system corruption, although
+       static checking and sandboxing should lessen the problem.
+  </li><li> Same as immediately above.
+  </li><li> This is especially true for the Exokernel, and is also true for L4.
+       SPIN should also be able to support multiple personalities, but due to
+       the more heavyweight nature of its kernel it is not clear whether all
+       code would need to run within the kernel, and if so, whether the
+       necessary kernel-bloat would have many negative effects.
+</li></ol> <p>
+
+From the above it is clear that the current generation of microkernels have
+solved the IPC and legacy problems mentioned in
+<a href="#first-ineff">Section&nbsp;2.2</a>, but they do not seem to have
+solved the problem of higher MCPI in microkernels (from
+<a href="#cite-chen93">[Chen&nbsp;93]</a>).  This should actually be a great
+cause for concern, since, with rapidly increasing internal CPU speed, cache
+performance is becoming more and more of an issue.
+In <a href="#cite-liedtke95">[Liedtke&nbsp;95]</a>, however, it is stated that
+making the kernel small enough to fit almost entirely into the cache will
+eliminate this problem.  The SPIN approach of computing within the kernel may
+also be a solution to this problem, despite the large kernel size. </p><p> 
+
+The one common aspect of the current generation of microkernels
+is extensibility through downloaded code proven safe.  This capability seems
+crucial for future high-speed networking and distributed OSs, especially with
+the sharply increasing relative cost of process-switching 
+<a href="#cite-engler95">[Engler&nbsp;95]</a>.  It is thus curious that L4
+does not as of yet support kernel-downloadable extensions.  A reading of the L4
+papers, however, reveals that the system does in fact <em>not</em> have very
+good network performance, and one can guess that it is only a matter of time
+before they remedy this with downloadable extensions. </p><p>
+
+The complexity of the interface exported by second-generation microkernels 
+varies greatly.  L4 and Exokernel both provide simple, low-level operations.
+L4 provides the rudimentary kernel abstractions required for address-space and
+thread management, while the Exokernel provides the bare hardware-dependent
+primitives required for secure multitasking of resources.  SPIN, on the other
+hand, exports a varied interface, with an application seeing 
+the first-generation microkernel interfaces inherited from Mach, as well as the
+internal interfaces for kernel-downloaded code.
+The existence of ASHes in the Exokernel blurs the global picture even more.
+The proper set of kernel-provided operations is thus probably a
+mixture of efficient low-level operations and the ability to extend the kernel
+with higher-level operations when they are needed, e.g., to support
+time-critical functionality such as networking. </p><p>
+
+The Exokernel's hardware dependence may perhaps be a serious drawback.
+In <a href="#cite-liedtke95">[Liedtke&nbsp;95]</a> it was found that building
+very low level abstractions, such as those exported by L4, is extremely CPU
+dependent, requiring completely different approaches for successive members of
+the Intel x86 family.
+This seems to indicate that building low-level library OSs on top of Exokernels
+may be something which needs to be redone for each generation of processors.
+Such a high level of non-portability would be a very serious impediment for any
+real acceptance of Exokernel-based OSs.   </p><p>
+
+In conclusion, we should stress what we have already pointed out in the
+introduction.  The most important liability of the second-generation
+microkernels is the complete lack of real OSs based on them.  Only every-day 
+practical experience can prove an OS truly viable.  As these
+microkernels are very recent it is still far too early for their final
+judgement.  Time can be their only definite judge. </p><p>
+
+
+<a name="cite">
+</a></p><h2><a name="cite">5. References</a></h2>
+<a name="cite-bershad92">
+<strong>[Bershad 92]</strong><br></a>
+B.N. Bershad, R.P. Draves and A. Forin.
+<a href="https://web.archive.org/web/20160831193218/ftp://cs.cmu.edu/afs/cs/project/mach/public/doc/published/benchmark.ps">
+Using Microbenchmarks to Evaluate System Performance.</a> 
+In <em>Proceedings of the Third Workshop on
+Workstation Operating Systems</em>, pp. 148-153, Key Biscayne, FL, April
+1992.
+<p>
+
+<a name="cite-bershad95">
+<strong>[Bershad 95]</strong><br></a>
+B.N. Bershad, S. Savage, P. Pardyak, E.G. Sirer, M.E. Fiuczynski, D.
+Becker, S. Eggers and C. Chambers.
+<a href="https://web.archive.org/web/20160831193218/http://www.cs.washington.edu/research/projects/spin/www/papers/SOSP95/sosp95.ps">
+Extensibility, Safety and Performance in the SPIN Operating System.</a>
+In <em>Proceedings of the 15th ACM Symposium on
+Operating System Principles (SOSP)</em>(Copper Mountain Resort, Colo.,
+Dec. 1995) ACM Press, 1995, pp. 267-284.
+</p><p>
+
+<a name="cite-chen93">
+<strong>[Chen 93]</strong><br></a>
+J.B. Chen and B.N. Bershad.
+<a href="https://web.archive.org/web/20160831193218/ftp://cs.cmu.edu/afs/cs/project/mach/public/doc/published/os-memorysys.ps">
+The Impact of Operating System Structure on Memory System Performance.</a>
+In <em>14th ACM Symposium on  
+Operating System Principles (SOSP)</em>, Asheville, NC, pp. 120-133.
+</p><p>
+
+<a name="cite-engler95">
+<strong>[Engler 95]</strong><br></a>
+D.R. Engler, M.F. Kaashoek and J. O'Toole. 
+<a href="https://web.archive.org/web/20160831193218/http://www.pdos.lcs.mit.edu/papers/exokernel-sosp95.ps">Exokernel,
+an operating system architecture for application-level resource management.</a>
+In <em>Proceedings 
+of the 15th ACM Symposium on Operating System Principles (SOSP)</em>
+(Copper Mountain Resort, Colo., Dec. 1995) ACM Press, 1995, pp. 251-266.
+</p><p>
+
+<a name="cite-golub90">
+<strong>[Golub 90]</strong><br></a>
+D. Golub, R. Dean, A. Forin, and R. Rashid.
+<a href="https://web.archive.org/web/20160831193218/ftp://mach.cs.cmu.edu/afs/cs/project/mach/public/doc/published/mach3_intro.ps">
+Unix as an application program.</a>
+In <em>Proceedings of the Usenix Summer Conference</em>
+(Anaheim, Calif., June 1990). Usenix Association, 1990, pp. 87-96.
+</p><p>
+
+<a name="cite-grimm96">
+<strong>[Grimm 96]</strong><br></a>
+R. Grimm, G.R. Ganger, M.F. Kaashoek and D.R. Engler.
+<a href="https://web.archive.org/web/20160831193218/http://www.pdos.lcs.mit.edu/papers/appstor.html">
+Application-Controlled Storage Management.</a>
+Submitted for publication.
+</p><p>
+
+<a name="cite-guillemont82">
+<strong>[Guillemont 82]</strong><br></a>
+M. Guillemont. 
+The Chorus distributed operation system: Design and implementation.
+In <em>Proceedings 
+of the ACM International Symposium on Local Computer Networks</em>
+(Firenze, Italy, Apr. 1982) ACM Press, 1982, pp. 207-223.
+</p><p>
+
+<a name="cite-hansen70">
+<strong>[Hansen 70]</strong><br></a>
+P.B. Hansen. 
+The nucleus of a multiprogramming system. 
+<em>Communications
+of the ACM</em>, 13(4):238-241, April 1970.
+</p><p>
+
+<a name="cite-kaashoek96">
+<strong>[Kaashoek 96]</strong><br></a>
+M.F. Kaashoek, D.R. Engler, G.R. Ganger and D.A. Wallach. 
+<a href="https://web.archive.org/web/20160831193218/http://www.pdos.lcs.mit.edu/papers/serverOS.html">
+Server operating systems.</a>
+This paper appears in the <em>1996 SIGOPS European Workshop</em>, 
+September 9-11, 1996.
+</p><p>
+
+<a name="cite-liedtke93">
+<strong>[Liedtke 93]</strong><br></a>
+J. Liedtke. 
+<a href="https://web.archive.org/web/20160831193218/http://borneo.gmd.de/RS/Papers/SOSP-14/SOSP-14.html">
+Improving IPC by kernel design.</a>
+In <em>14th ACM Symposium on
+Operating System Principles (SOSP)</em>, Asheville, NC, pp. 175-188.
+</p><p>
+
+<a name="cite-liedtke95">
+<strong>[Liedtke 95]</strong><br></a>
+J. Liedtke. 
+<a href="https://web.archive.org/web/20160831193218/http://borneo.gmd.de/~liedtke/L4/sosp95.ps">
+On microkernel construction.</a>
+In <em>Proceedings 
+of the 15th ACM Symposium on Operating System Principles (SOSP)</em>
+(Copper Mountain Resort, Colo., Dec. 1995) ACM Press, New york, 1995, 
+pp. 237-250.
+</p><p>
+
+<a name="cite-liedtke96">
+<strong>[Liedtke 96]</strong><br></a>
+J. Liedtke. 
+Toward Real Microkernels. 
+<em>Communications of the ACM</em>, 39(9):70-77, September 1996.
+</p><p>
+
+
+<a name="cite-pu88">
+<strong>[Pu 88]</strong><br></a>
+C. Pu, H. Massalin and J. Ioannidis. 
+The Synthesis Kernel. 
+<em>Computing Systems</em>, 1(Jan. 1988): 11-32.
+</p><p>
+
+
+</p><hr>
+<address>
+<a href="https://ulfar.info">Úlfar Erlingsson</a>
+<a href="#">&lt;ulfar@cs.cornell.edu&gt;</a>
+and 
+<a href="https://www.linkedin.com/in/athanasios-kyparlis-4781434/">Athanasios Kyparlis</a>
+<a href="#">&lt;kyparlis@cs.cornell.edu&gt;</a>
+</address>
+<!-- hhmts start -->
+Last modified: Mon Dec  2 18:22:15 1996
+<!-- hhmts end -->
+ 
+
+
+
+</body></html>
